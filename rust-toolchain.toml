@@ -1,0 +1,4 @@
+[toolchain]
+profile = "minimal"
+channel = "stable"
+targets = ["riscv64gc-unknown-none-elf"]
