@@ -4,9 +4,7 @@ extern crate clap;
 use clap::Parser;
 use os_xtask_utils::{BinUtil, Cargo, CommandExt, Qemu};
 use std::{
-    path::{Path, PathBuf},
-    process,
-    sync::OnceLock,
+    fs, path::{Path, PathBuf}, process, sync::OnceLock
 };
 
 fn project_path() -> &'static Path {
@@ -28,6 +26,8 @@ enum Commands {
     Build(BuildArgs),
     /// 运行LOS
     Run(RunArgs),
+    /// 反汇编LOS
+    Asm(AsmArgs)
 }
 
 #[derive(Args, Default)]
@@ -112,6 +112,26 @@ impl RunArgs {
     }
 }
 
+#[derive(Args, Default)]
+struct AsmArgs {
+    #[clap(flatten)]
+    build: BuildArgs,
+    #[clap(long, short)]
+    name: Option<String>
+}
+
+impl AsmArgs {
+    fn dump(self) {
+        let elf = self.build.build(false);
+        let out = project_path().join("target").join(self.name.unwrap_or(format!(
+            "{}.asm",
+            elf.file_stem().unwrap().to_string_lossy()
+        )));
+        println!("Asm file dumps to '{}'.", out.display());
+        fs::write(out, BinUtil::objdump().arg(elf).arg("-d").output().stdout).unwrap();
+    }
+}
+
 fn main() {
     use Commands::*;
     match Cli::parse().command {
@@ -120,6 +140,9 @@ fn main() {
         }
         Run(args) => {
             args.run();
+        },
+        Asm(args) => {
+            args.dump();
         },
     }
 }
