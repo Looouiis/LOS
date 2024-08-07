@@ -34,6 +34,7 @@ fn clear_bss() {
 
 #[no_mangle]
 fn rust_main() {
+    arch_relate::prepare_registers();
     clear_bss();
     APP_MANAGER.get().print_info();
     let num = run_app();

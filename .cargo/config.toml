@@ -1,6 +1,6 @@
 [alias]
 xtask = "run --package xtask --"
 xbuild = "xtask build"
-xrun = "xtask run"
+qidong = "xtask run"
 xdebug = "xtask run -d"
 xasm = "xtask asm"

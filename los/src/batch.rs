@@ -1,5 +1,4 @@
-use core::cell::{RefCell, RefMut};
-
+use core::{cell::{RefCell, RefMut}, cmp::min, sync::atomic::AtomicBool};
 use lazy_static::lazy_static;
 
 use crate::{arch_relate::{self, syscall_handler::trap::{trap_restore, TrapContext}}, stack::USER_STACK};
@@ -7,6 +6,8 @@ use crate::{arch_relate::{self, syscall_handler::trap::{trap_restore, TrapContex
 extern "C" {
     fn _num_app();
 }
+
+pub(crate) static RUNNING: AtomicBool = AtomicBool::new(false);
 
 const MAX_APP_NUM: usize = 10;
 
@@ -88,6 +89,7 @@ pub(crate) fn exit(code: usize) -> ! {
 
 #[no_mangle]
 pub(crate) fn run_app() -> usize {
+    RUNNING.store(true, core::sync::atomic::Ordering::Relaxed);
     let mgr = APP_MANAGER.get();
     unsafe { mgr.load_app() };
     drop(mgr);
@@ -106,6 +108,7 @@ pub(crate) fn run_app() -> usize {
             break;
         }
     }
+    RUNNING.store(false, core::sync::atomic::Ordering::Relaxed);
     trace!("run_app trace");
     app_num
 }
@@ -117,4 +120,18 @@ pub(crate) fn restore_to_kernel() -> ! {
     unsafe {
         trap_restore(&mut (*ctx_ptr));
     };
+}
+
+pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> usize {
+    let mgr = APP_MANAGER.get();
+    let str_name = "hahaha";
+    let min_len = min(str_name.len(), len);
+    unsafe {
+        name.copy_from(str_name.as_ptr(), min_len);
+        if min_len < len {
+            name.add(min_len).write_volatile(b'\0');
+        }
+        id.write_volatile(mgr.current_app);
+    };
+    min_len
 }

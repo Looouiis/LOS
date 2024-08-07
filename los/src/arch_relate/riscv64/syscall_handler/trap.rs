@@ -198,6 +198,33 @@ impl TrapContext {
             spec: 0
         }
     }
+
+    pub(crate) fn get_args(&self, arg: usize) -> usize {
+        match arg {
+            0 => {
+                self.info.a0
+            }
+            1 => {
+                self.info.a1
+            }
+            2 => {
+                self.info.a2
+            }
+            _ => panic!("Unsupported arg index")
+        }
+    }
+
+    pub(crate) fn get_syscall_id(&self) -> usize {
+        self.info.a7
+    }
+
+    pub(crate) fn set_syscall_res(&mut self, res: usize) {
+        self.info.a0 = res;
+    }
+
+    pub(crate) fn ret_at_nxt(&mut self) {
+        self.spec += 4;
+    }
 }
 
 #[allow(unused)]

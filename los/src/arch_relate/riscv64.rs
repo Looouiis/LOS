@@ -27,6 +27,11 @@ unsafe extern "C" fn _start() -> ! {
 }
 
 #[inline]
+pub(crate) fn prepare_registers() {
+    unsafe { sstatus::set_spp(sstatus::SPP::Supervisor) };
+}
+
+#[inline]
 pub(crate) unsafe fn run_app(user_top: usize) -> usize {
     const CLEAR_SPP: usize = !(1usize << 8);
     // asm!(
