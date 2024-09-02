@@ -21,7 +21,7 @@ for app in apps:
             lines.append(line)
     with open(linker, 'w+') as f:
         f.writelines(lines)
-    os.system('cargo build --target riscv64gc-unknown-none-elf --package user --bin %s --release' % app)
+    os.system('RUSTFLAGS="-Cforce-frame-pointers=yes" cargo build --target riscv64gc-unknown-none-elf --package user --bin %s --release' % app)
     tmp = target + '/' + app
     os.system('rust-objcopy --strip-all -O binary %s %s.bin' % (tmp, tmp))
     print('[build.py] application %s start with address %s' %(app, hex(base_address+step*app_id)))
