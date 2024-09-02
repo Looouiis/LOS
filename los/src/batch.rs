@@ -9,7 +9,7 @@ extern "C" {
 
 pub(crate) static RUNNING: AtomicBool = AtomicBool::new(false);
 
-const MAX_APP_NUM: usize = 10;
+const MAX_APP_NUM: usize = 20;
 
 lazy_static!{
     pub(crate) static ref APP_MANAGER: ArcCell<AppManager> = unsafe {
@@ -23,7 +23,8 @@ lazy_static!{
                 app_num,
                 current_app: 0,
                 app_start,
-                kernel_ctx: TrapContext::new()
+                kernel_ctx: TrapContext::new(),
+                current_entry: AppManager::ENTRY
             }
         })
     };
@@ -33,28 +34,33 @@ pub(crate) struct AppManager {
     app_num: usize,
     current_app: usize,
     app_start: [usize; MAX_APP_NUM + 1],
-    pub(crate) kernel_ctx: TrapContext
+    pub(crate) kernel_ctx: TrapContext,
+    current_entry: usize
 }
 
 impl AppManager {
     pub(crate) const ENTRY: usize = 0x80400000;
+    pub(crate) const LIMIT: usize = 0x20000;
 
     pub fn print_info(&self) {
         log!("app_num: {}", self.app_num);
     }
 
     unsafe fn load_app(&self) {
-        let mut ptr = Self::ENTRY as *mut u8;
-        (self.app_start[self.current_app] .. self.app_start[self.current_app + 1]).for_each(|raw| {
-            let ch = (raw as *mut u8).read_volatile();
-            ptr.write_volatile(ch);
-            ptr = ptr.add(1);
+        (0 .. self.app_num).for_each(|id| {
+            let mut ptr = (Self::ENTRY + id * Self::LIMIT) as *mut u8;
+            (self.app_start[id] .. self.app_start[id + 1]).for_each(|raw| {
+                let ch = (raw as *mut u8).read_volatile();
+                ptr.write_volatile(ch);
+                ptr = ptr.add(1);
+            });
+            fence!();
         });
-        fence!();
     }
 
     fn nxt_app(&mut self) -> bool {
         self.current_app = self.current_app + 1;
+        self.current_entry += Self::LIMIT;
         if self.app_num == self.current_app {
             log!("Execute complete");
             false
@@ -62,6 +68,10 @@ impl AppManager {
         else {
             true
         }
+    }
+
+    pub(crate) fn get_entry(&self) -> usize {
+        self.current_entry
     }
 }
 
@@ -87,7 +97,6 @@ pub(crate) fn exit(code: usize) -> ! {
     restore_to_kernel()
 }
 
-#[no_mangle]
 pub(crate) fn run_app() -> usize {
     RUNNING.store(true, core::sync::atomic::Ordering::Relaxed);
     let mgr = APP_MANAGER.get();
@@ -102,7 +111,7 @@ pub(crate) fn run_app() -> usize {
         }
         let mut mgr = APP_MANAGER.get();
         if mgr.nxt_app() {
-            unsafe { mgr.load_app() };
+            // unsafe { mgr.load_app() };
         }
         else {
             break;

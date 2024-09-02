@@ -31,7 +31,6 @@ pub(crate) fn prepare_registers() {
     unsafe { sstatus::set_spp(sstatus::SPP::Supervisor) };
 }
 
-#[inline]
 pub(crate) unsafe fn run_app(user_top: usize) -> usize {
     const CLEAR_SPP: usize = !(1usize << 8);
     // asm!(
@@ -63,6 +62,7 @@ pub(crate) unsafe fn run_app(user_top: usize) -> usize {
     assert!(sstatus::read().spp() == sstatus::SPP::Supervisor);
     let mgr = APP_MANAGER.get();
     let ctx_ptr = core::ptr::addr_of!(mgr.kernel_ctx);
+    let entry = mgr.get_entry();
     drop(mgr);
     let res;
     asm!(
@@ -143,7 +143,7 @@ pub(crate) unsafe fn run_app(user_top: usize) -> usize {
             ",
 
         in("t1") user_top,
-        in("t0") crate::batch::AppManager::ENTRY,
+        in("t0") entry,
         in("a3") ctx_ptr,
         // ctx = sym mgr.kernel_ctx,
         clear_spp = const CLEAR_SPP,

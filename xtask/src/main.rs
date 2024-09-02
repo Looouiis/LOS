@@ -4,7 +4,7 @@ extern crate clap;
 use clap::Parser;
 use os_xtask_utils::{BinUtil, Cargo, CommandExt, Qemu};
 use std::{
-    fs, path::{Path, PathBuf}, process, sync::OnceLock
+    fs, path::{Path, PathBuf}, process::{self, Command}, sync::OnceLock
 };
 
 fn project_path() -> &'static Path {
@@ -55,6 +55,7 @@ impl BuildArgs {
                 "riscv64gc-unknown-none-elf"
             },
         };
+        Command::new("python").arg("./user/build.py").status().unwrap();
         Cargo::build()
             .package("los")
             .conditional(!self.debug, |cargo| {
