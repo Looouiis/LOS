@@ -16,13 +16,19 @@ lazy_static!{
         ArcCell::new({
             let ptr = _num_app as usize as *const usize;
             let app_num = ptr.read_volatile();
-            let mut app_start: [usize; MAX_APP_NUM + 1] = [0; MAX_APP_NUM + 1];
-            let start_slice = core::slice::from_raw_parts(ptr.add(1), app_num + 1);
-            app_start[..= app_num].copy_from_slice(start_slice);
+            let mut process: [Process; MAX_APP_NUM + 1] = [Process{pc: 0, start: 0, len: 0}; MAX_APP_NUM + 1];
+            // let start_slice = core::slice::from_raw_parts(ptr.add(1), app_num + 1);
+            // process[..= app_num].copy_from_slice(start_slice);
+            for i in 0 ..= app_num {
+                let start = ptr.add(1 + i).read_volatile();
+                process[i].start = start;
+                process[i].pc = start;
+                process[i].len = AppManager::LIMIT;
+            }
             AppManager {
                 app_num,
                 current_app: 0,
-                app_start,
+                process,
                 kernel_ctx: TrapContext::new(),
                 current_entry: AppManager::ENTRY
             }
@@ -30,10 +36,18 @@ lazy_static!{
     };
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct Process {
+    start: usize,
+    pc: usize,
+    len: usize
+}
+
 pub(crate) struct AppManager {
     app_num: usize,
     current_app: usize,
-    app_start: [usize; MAX_APP_NUM + 1],
+    // app_start: [usize; MAX_APP_NUM + 1],
+    process: [Process; MAX_APP_NUM + 1],
     pub(crate) kernel_ctx: TrapContext,
     current_entry: usize
 }
@@ -49,7 +63,7 @@ impl AppManager {
     unsafe fn load_app(&self) {
         (0 .. self.app_num).for_each(|id| {
             let mut ptr = (Self::ENTRY + id * Self::LIMIT) as *mut u8;
-            (self.app_start[id] .. self.app_start[id + 1]).for_each(|raw| {
+            (self.process[id].start .. self.process[id].start + self.process[id].len).for_each(|raw| {
                 let ch = (raw as *mut u8).read_volatile();
                 ptr.write_volatile(ch);
                 ptr = ptr.add(1);
@@ -70,8 +84,12 @@ impl AppManager {
         }
     }
 
-    pub(crate) fn get_entry(&self) -> usize {
-        self.current_entry
+    // pub(crate) fn get_entry(&self) -> usize {
+    //     self.current_entry
+    // }
+
+    pub(crate) fn get_process(&self) -> &Process {
+        &self.process[self.current_app]
     }
 }
 
@@ -101,17 +119,20 @@ pub(crate) fn run_app() -> usize {
     RUNNING.store(true, core::sync::atomic::Ordering::Relaxed);
     let mgr = APP_MANAGER.get();
     unsafe { mgr.load_app() };
+    let mut current_p;
+    current_p = mgr.get_process().pc;
     drop(mgr);
     let mut app_num = 0;
     let user_top = USER_STACK.get_sp_top();
     loop {
         unsafe {
-            arch_relate::run_app(user_top);
+            arch_relate::run_app(user_top, current_p);
             app_num += 1;
         }
         let mut mgr = APP_MANAGER.get();
         if mgr.nxt_app() {
             // unsafe { mgr.load_app() };
+            current_p = mgr.get_process().pc;
         }
         else {
             break;
