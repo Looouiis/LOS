@@ -1,7 +1,7 @@
 use core::{cell::{RefCell, RefMut}, cmp::min, sync::atomic::AtomicBool};
 use lazy_static::lazy_static;
 
-use crate::{arch_relate::{self, syscall_handler::trap::{trap_restore, TrapContext}}, stack::USER_STACK};
+use crate::{arch_relate::{self, syscall_handler::trap::{trap_restore, TrapContext}}, stack::{UserStack, USER_STACK, USER_STACK_SIZE}};
 
 extern "C" {
     fn _num_app();
@@ -9,28 +9,28 @@ extern "C" {
 
 pub(crate) static RUNNING: AtomicBool = AtomicBool::new(false);
 
-const MAX_APP_NUM: usize = 20;
+pub(crate) const MAX_APP_NUM: usize = 20;
 
 lazy_static!{
     pub(crate) static ref APP_MANAGER: ArcCell<AppManager> = unsafe {
         ArcCell::new({
             let ptr = _num_app as usize as *const usize;
             let app_num = ptr.read_volatile();
-            let mut process: [Process; MAX_APP_NUM + 1] = [Process{pc: 0, start: 0, len: 0}; MAX_APP_NUM + 1];
+            let process: [Process; MAX_APP_NUM + 1] = [Process{pc: 0, start: 0, len: 0, status: State::Exited, stack: None, ctx: TrapContext::new()}; MAX_APP_NUM + 1];
             // let start_slice = core::slice::from_raw_parts(ptr.add(1), app_num + 1);
             // process[..= app_num].copy_from_slice(start_slice);
-            for i in 0 ..= app_num {
-                let start = ptr.add(1 + i).read_volatile();
-                process[i].start = start;
-                process[i].pc = start;
-                process[i].len = AppManager::LIMIT;
-            }
+            // for i in 0 ..= app_num {
+            //     let start = ptr.add(1 + i).read_volatile();
+            //     process[i].start = start;
+            //     process[i].pc = start;
+            //     process[i].len = AppManager::LIMIT;.
+            // }
             AppManager {
                 app_num,
                 current_app: 0,
                 process,
                 kernel_ctx: TrapContext::new(),
-                current_entry: AppManager::ENTRY
+                current_entry: AppManager::ENTRY,
             }
         })
     };
@@ -38,9 +38,19 @@ lazy_static!{
 
 #[derive(Clone, Copy)]
 pub(crate) struct Process {
-    start: usize,
-    pc: usize,
-    len: usize
+    pub(crate) start: usize,
+    pub(crate) pc: usize,
+    pub(crate) len: usize,
+    pub(crate) status: State,
+    // stack: Option<UserStack>,
+    pub(crate) stack: Option<usize>,
+    pub(crate) ctx: TrapContext,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum State {
+    Ready, Run, Finish,
+    Exited
 }
 
 pub(crate) struct AppManager {
@@ -49,7 +59,7 @@ pub(crate) struct AppManager {
     // app_start: [usize; MAX_APP_NUM + 1],
     process: [Process; MAX_APP_NUM + 1],
     pub(crate) kernel_ctx: TrapContext,
-    current_entry: usize
+    current_entry: usize,
 }
 
 impl AppManager {
@@ -60,7 +70,18 @@ impl AppManager {
         log!("app_num: {}", self.app_num);
     }
 
-    unsafe fn load_app(&self) {
+    unsafe fn load_app(&mut self) {
+        let ptr = _num_app as usize as *const usize;
+        let app_num = ptr.read_volatile();
+        for i in 0 ..= app_num {
+            let start = ptr.add(1 + i).read_volatile();
+            self.process[i].start = start;
+            self.process[i].pc = start;
+            self.process[i].len = AppManager::LIMIT;
+            self.process[i].status = State::Ready;
+            self.process[i].stack = Some(i);
+            self.process[i].ctx.info.sp = USER_STACK[i].get_sp_top();
+        }
         (0 .. self.app_num).for_each(|id| {
             let mut ptr = (Self::ENTRY + id * Self::LIMIT) as *mut u8;
             (self.process[id].start .. self.process[id].start + self.process[id].len).for_each(|raw| {
@@ -72,16 +93,33 @@ impl AppManager {
         });
     }
 
+    // 将app_manager内部的指针转移指向下一个app
     fn nxt_app(&mut self) -> bool {
-        self.current_app = self.current_app + 1;
-        self.current_entry += Self::LIMIT;
-        if self.app_num == self.current_app {
+        let mut index = 0;
+        while index < self.app_num {
+            if self.process[index].status == State::Ready {
+                break
+            }
+            index += 1;
+        }
+        if index == self.app_num {
             log!("Execute complete");
             false
         }
         else {
+            self.current_app = index;
+            self.current_entry = Self::ENTRY + Self::LIMIT * index;
             true
         }
+        // (0 .. self.app_num).for_each(|i| {
+        //     if self.process[i].status == State::Ready {
+        //         self.current_app = i;
+        //         self.current_entry = Self::ENTRY + Self::LIMIT * i;
+        //         return true;
+        //     }
+        // });
+        // log!("Execute complete");
+        // return false;
     }
 
     // pub(crate) fn get_entry(&self) -> usize {
@@ -90,6 +128,18 @@ impl AppManager {
 
     pub(crate) fn get_process(&self) -> &Process {
         &self.process[self.current_app]
+    }
+
+    pub(crate) fn exit_current(&mut self) {
+        self.process[self.current_app].status = State::Exited;
+    }
+
+    pub(crate) fn mark_pc(&mut self, pc: usize) {
+        self.process[self.current_app].pc = pc;
+    }
+
+    pub(crate) fn mark_ctx(&mut self, ctx: TrapContext) {
+        self.process[self.current_app].ctx = ctx;
     }
 }
 
@@ -112,27 +162,30 @@ impl<T> ArcCell<T> {
 #[no_mangle]
 pub(crate) fn exit(code: usize) -> ! {
     log!("function exit with {}", code);
+    APP_MANAGER.get().exit_current();
     restore_to_kernel()
 }
 
 pub(crate) fn run_app() -> usize {
     RUNNING.store(true, core::sync::atomic::Ordering::Relaxed);
-    let mgr = APP_MANAGER.get();
+    let mut mgr = APP_MANAGER.get();
     unsafe { mgr.load_app() };
-    let mut current_p;
-    current_p = mgr.get_process().pc;
+    let mut process = mgr.get_process().clone();
     drop(mgr);
+    let mut current_pc= process.pc;
+    let stack_index = process.stack.unwrap();
     let mut app_num = 0;
-    let user_top = USER_STACK.get_sp_top();
+    let user_top = USER_STACK[stack_index].get_sp_top();
     loop {
         unsafe {
-            arch_relate::run_app(user_top, current_p);
+            arch_relate::run_app(process);
+            // arch_relate::run_app(user_top, current_pc);
             app_num += 1;
         }
         let mut mgr = APP_MANAGER.get();
         if mgr.nxt_app() {
-            // unsafe { mgr.load_app() };
-            current_p = mgr.get_process().pc;
+            // current_pc = mgr.get_process().pc;
+            process = mgr.get_process().clone();
         }
         else {
             break;

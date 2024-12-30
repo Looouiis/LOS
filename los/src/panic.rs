@@ -15,5 +15,5 @@ fn panic(info: &PanicInfo) -> ! {
     else {
         println!("Panicked: {}", info.message());
     }
-    reset(true);
+    reset(true)
 }

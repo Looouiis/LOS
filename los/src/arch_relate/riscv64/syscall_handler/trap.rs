@@ -184,9 +184,13 @@ pub(crate) unsafe extern "C" fn trap_restore(ctx: &mut TrapContext) -> ! {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct TrapContext {
+    // 0-31
     pub info: RegInfo,
+    // 32
     pub sstatus: Sstatus,
+    // 33
     pub spec: usize,
 }
 
@@ -194,6 +198,16 @@ impl TrapContext {
     pub(crate) fn new() -> Self {
         TrapContext {
             info: RegInfo::new(),
+            sstatus: sstatus::read(),
+            spec: 0
+        }
+    }
+
+    pub(crate) fn new_user(sp: usize) -> Self {
+        let mut info = RegInfo::new();
+        info.sp = sp;
+        Self {
+            info,
             sstatus: sstatus::read(),
             spec: 0
         }
@@ -228,6 +242,7 @@ impl TrapContext {
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub(crate) struct RegInfo {
     pub(crate) x0: usize,
     pub(crate) ra: usize,

@@ -1,7 +1,8 @@
 use core::arch::asm;
 use riscv::register::sstatus;
+use syscall_handler::trap::TrapContext;
 
-use crate::{batch::APP_MANAGER, stack};
+use crate::{batch::{Process, APP_MANAGER}, stack::{self, USER_STACK}};
 
 pub(crate) mod ecall;
 #[macro_use]
@@ -31,26 +32,10 @@ pub(crate) fn prepare_registers() {
     unsafe { sstatus::set_spp(sstatus::SPP::Supervisor) };
 }
 
-pub(crate) unsafe fn run_app(user_top: usize, entry: usize) -> usize {
+pub(crate) unsafe fn run_app(process: Process/*user_top: usize, entry: usize*/) -> usize {
+    let entry = process.pc;
+    // log!("entry: {:x}", entry);
     const CLEAR_SPP: usize = !(1usize << 8);
-    // asm!(
-    //     "   csrw sepc, t0
-    //         csrr t0, sstatus
-    //         andi t0, t0, {clear_spp}
-    //         csrw sstatus, t0
-    //         csrw sscratch, t2
-    //         li fp, 0        # 防止栈跟踪
-    //         li ra, 0
-    //         mv sp, t1
-    //         sret
-    //     ",
-    //     in("t0") crate::batch::AppManager::ENTRY,
-    //     in("t1") user_top,
-    //     in("t2") kernel_top,
-    //     clear_spp = const CLEAR_SPP,
-    //     options(noreturn)
-    // );
-    // sstatus::set_spp(sstatus::SPP::Supervisor);
     unsafe {
         asm!(
             "   csrr t0, sstatus
@@ -61,12 +46,12 @@ pub(crate) unsafe fn run_app(user_top: usize, entry: usize) -> usize {
     }
     assert!(sstatus::read().spp() == sstatus::SPP::Supervisor);
     let mgr = APP_MANAGER.get();
-    let ctx_ptr = core::ptr::addr_of!(mgr.kernel_ctx);
-    // let entry = mgr.get_entry();
+    let kernel_ctx_ptr = core::ptr::addr_of!(mgr.kernel_ctx);
+    let user_ctx_ptr: *const TrapContext = core::ptr::addr_of!(process.ctx);
+    // log!("run_app::user_sp: {:x}", process.ctx.info.sp);
     drop(mgr);
     let res;
     asm!(
-        // "la a3, {ctx}",
         save!(x1 => a3[1]),
         save!(x2 => a3[2]),
         save!(x3 => a3[3]),
@@ -100,52 +85,81 @@ pub(crate) unsafe fn run_app(user_top: usize, entry: usize) -> usize {
         "   csrr t3, sstatus
             csrw sepc, t0
             csrrw sp, sscratch, sp
-            mv sp, t1
             la t1, 0f
             addi t1, t1, 4
         ",
         save!(t1 => a3[33]),
         save!(t3 => a3[32]),
-        "   mv x1, x0
-            mv x3, x0
-            mv x5, x0
-            mv x6, x0
-            mv x7, x0
-            mv x8, x0
-            mv x9, x0
-            mv x10, x0
-            mv x11, x0
-            mv x12, x0
-            mv x13, x0
-            mv x14, x0
-            mv x15, x0
-            mv x16, x0
-            mv x17, x0
-            mv x18, x0
-            mv x19, x0
-            mv x20, x0
-            mv x21, x0
-            mv x22, x0
-            mv x23, x0
-            mv x24, x0
-            mv x25, x0
-            mv x26, x0
-            mv x27, x0
-            mv x28, x0
-            mv x29, x0
-            mv x30, x0
-            mv x31, x0
-            csrr t0, sstatus
-            andi t0, t0, {clear_spp}
-            csrw sstatus, t0
+        // "   mv x1, x0
+        //     mv x3, x0
+        //     mv x5, x0
+        //     mv x6, x0
+        //     mv x7, x0
+        //     mv x8, x0
+        //     mv x9, x0
+        //     mv x10, x0
+        //     mv x11, x0
+        //     mv x12, x0
+        //     mv x13, x0
+        //     mv x14, x0
+        //     mv x15, x0
+        //     mv x16, x0
+        //     mv x17, x0
+        //     mv x18, x0
+        //     mv x19, x0
+        //     mv x20, x0
+        //     mv x21, x0
+        //     mv x22, x0
+        //     mv x23, x0
+        //     mv x24, x0
+        //     mv x25, x0
+        //     mv x26, x0
+        //     mv x27, x0
+        //     mv x28, x0
+        //     mv x29, x0
+        //     mv x30, x0
+        //     mv x31, x0",
+        load!(a2[1] => x1),
+        load!(a2[2] => x2),
+        load!(a2[3] => x3),
+        load!(a2[5] => x5),
+        load!(a2[6] => x6),
+        load!(a2[7] => x7),
+        load!(a2[8] => x8),
+        load!(a2[9] => x9),
+        load!(a2[10] => x10),
+        load!(a2[11] => x11),
+        load!(a2[13] => x13),
+        load!(a2[14] => x14),
+        load!(a2[15] => x15),
+        load!(a2[16] => x16),
+        load!(a2[17] => x17),
+        load!(a2[18] => x18),
+        load!(a2[19] => x19),
+        load!(a2[20] => x20),
+        load!(a2[21] => x21),
+        load!(a2[22] => x22),
+        load!(a2[23] => x23),
+        load!(a2[24] => x24),
+        load!(a2[25] => x25),
+        load!(a2[26] => x26),
+        load!(a2[27] => x27),
+        load!(a2[28] => x28),
+        load!(a2[29] => x29),
+        load!(a2[30] => x30),
+        load!(a2[31] => x31),
+        load!(a2[12] => x12),
+        "
+            csrr a3, sstatus
+            andi a3, a3, {clear_spp}
+            csrw sstatus, a3
         0:
             sret
             ",
 
-        in("t1") user_top,
         in("t0") entry,
-        in("a3") ctx_ptr,
-        // ctx = sym mgr.kernel_ctx,
+        in("a2") user_ctx_ptr,
+        in("a3") kernel_ctx_ptr,
         clear_spp = const CLEAR_SPP,
     );
     trace!("arch_relate::run_app trace");
