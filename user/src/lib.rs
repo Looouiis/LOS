@@ -55,6 +55,10 @@ fn exit(exit_code: usize) -> ! {
     sys_exit(exit_code)
 }
 
+pub fn sys_yield() -> usize {
+    syscall::sys_yield()
+}
+
 /// 功能：获取应用程序在LOS中的task_id与name（长度不超过20）
 /// 
 /// 参数：

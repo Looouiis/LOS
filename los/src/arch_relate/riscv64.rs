@@ -33,6 +33,7 @@ pub(crate) fn prepare_registers() {
 }
 
 // 需保证该函数所有变量的生命周期在asm!()之前结束
+#[no_mangle]
 pub(crate) unsafe fn run_app(process: Process/*user_top: usize, entry: usize*/) {
     let entry = process.pc;
     // log!("entry: {:x}", entry);

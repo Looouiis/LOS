@@ -20,8 +20,9 @@ pub fn write(fd: usize, buf: &[u8]) {
 const SYSCALL_WIRTE: usize = 64;
 const SYSCALL_EXIT: usize = 93;
 const GET_TASK_INFO: usize = 38;
+const SYSCALL_YIELD: usize = 124;
 
-fn syscall(id: usize, args: [usize; 3]) -> isize {
+fn syscall(id: usize, args: [usize; 3]) -> usize {
     let mut ret;
     unsafe {
         asm!(
@@ -48,7 +49,7 @@ fn syscall(id: usize, args: [usize; 3]) -> isize {
 /// 返回值：返回成功写入的长度。
 /// 
 /// syscall ID：64
-pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
+pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> usize {
     syscall(SYSCALL_WIRTE, [fd, buf as usize, len])
 }
 
@@ -62,6 +63,17 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
 pub fn sys_exit(exit_code: usize) -> ! {
     syscall(SYSCALL_EXIT, [exit_code, 0, 0]);
     unreachable!()
+}
+
+/// 功能：主动出让cpu
+/// 
+/// 参数：无
+/// 
+/// 返回值：0
+/// 
+/// syscall ID：124
+pub fn sys_yield() -> usize {
+    syscall(SYSCALL_YIELD, [0, 0, 0])
 }
 
 /// 功能：获取应用程序在LOS中的task_id与name（长度不超过20）

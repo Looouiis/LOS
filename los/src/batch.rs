@@ -11,6 +11,11 @@ pub(crate) static RUNNING: AtomicBool = AtomicBool::new(false);
 
 pub(crate) const MAX_APP_NUM: usize = 20;
 
+pub(crate) enum RestoreBehavior {
+    DirectReturen(usize),
+    Reschedule
+}
+
 lazy_static!{
     pub(crate) static ref APP_MANAGER: ArcCell<AppManager> = unsafe {
         ArcCell::new({
@@ -95,9 +100,9 @@ impl AppManager {
 
     // 将app_manager内部的指针转移指向下一个app
     fn nxt_app(&mut self) -> bool {
-        let mut index = 0;
+        let mut index = 1;
         while index < self.app_num {
-            if self.process[index].status == State::Ready {
+            if self.process[(self.current_app + index) % self.app_num].status == State::Ready {
                 break
             }
             index += 1;
@@ -107,8 +112,8 @@ impl AppManager {
             false
         }
         else {
-            self.current_app = index;
-            self.current_entry = Self::ENTRY + Self::LIMIT * index;
+            self.current_app = (self.current_app + index) % self.app_num;
+            self.current_entry = Self::ENTRY + Self::LIMIT * self.current_app;
             true
         }
         // (0 .. self.app_num).for_each(|i| {
@@ -166,6 +171,10 @@ pub(crate) fn exit(code: usize) -> ! {
     restore_to_kernel()
 }
 
+pub(crate) fn sys_yield() -> RestoreBehavior {
+    RestoreBehavior::Reschedule
+}
+
 pub(crate) fn run_app() -> usize {
     RUNNING.store(true, core::sync::atomic::Ordering::Relaxed);
     let mut mgr = APP_MANAGER.get();
@@ -205,7 +214,7 @@ pub(crate) fn restore_to_kernel() -> ! {
     };
 }
 
-pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> usize {
+pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> RestoreBehavior {
     let mgr = APP_MANAGER.get();
     let str_name = "hahaha";
     let min_len = min(str_name.len(), len);
@@ -216,5 +225,5 @@ pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> usize {
         }
         id.write_volatile(mgr.current_app);
     };
-    min_len
+    RestoreBehavior::DirectReturen(min_len)
 }

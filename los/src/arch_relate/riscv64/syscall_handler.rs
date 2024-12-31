@@ -13,12 +13,19 @@ pub fn syscall_service(mut ctx: TrapContext) {
         Trap::Exception(Exception::UserEnvCall) => {
             ctx.ret_at_nxt();
             APP_MANAGER.get().mark_pc(ctx.spec);
-            ctx.set_syscall_res(syscall(ctx.get_syscall_id(), [ctx.get_args(0), ctx.get_args(1), ctx.get_args(2)]));
-            // APP_MANAGER.get().mark_ctx(ctx);
-            // restore_to_kernel();
-            unsafe {
-                trap_restore(&mut ctx);
-            };
+            // ctx.set_syscall_res(syscall(ctx.get_syscall_id(), [ctx.get_args(0), ctx.get_args(1), ctx.get_args(2)]));
+            match syscall(ctx.get_syscall_id(), [ctx.get_args(0), ctx.get_args(1), ctx.get_args(2)]) {
+                crate::batch::RestoreBehavior::DirectReturen(res) => {
+                    ctx.set_syscall_res(res);
+                    unsafe {
+                        trap_restore(&mut ctx);
+                    };
+                },
+                crate::batch::RestoreBehavior::Reschedule => {
+                    APP_MANAGER.get().mark_ctx(ctx);
+                    restore_to_kernel();
+                },
+            }
         },
         Trap::Exception(e) => {
             if sstatus::read().spp() == sstatus::SPP::Supervisor {

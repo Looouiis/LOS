@@ -38,7 +38,7 @@ fn rust_main() {
     clear_bss();
     APP_MANAGER.get().print_info();
     let num = run_app();
-    log!("run {} app", num);
+    log!("arch_relate::run_app entered {} times", num);
     trace!("main trace");
     shutdown();
     // loop {}
