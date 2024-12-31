@@ -7,17 +7,17 @@ use crate::{batch::{exit, restore_to_kernel, APP_MANAGER}, syscall::syscall};
 pub(crate) mod trap;
 
 #[no_mangle]
-pub fn syscall_service(ctx: &mut TrapContext) {
+pub fn syscall_service(mut ctx: TrapContext) {
     // log!("syscall_service::user_sp: {:x}", ctx.info.sp);
     match scause::read().cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             ctx.ret_at_nxt();
             APP_MANAGER.get().mark_pc(ctx.spec);
-            APP_MANAGER.get().mark_ctx(ctx.clone());
             ctx.set_syscall_res(syscall(ctx.get_syscall_id(), [ctx.get_args(0), ctx.get_args(1), ctx.get_args(2)]));
+            // APP_MANAGER.get().mark_ctx(ctx);
             // restore_to_kernel();
             unsafe {
-                trap_restore(ctx);
+                trap_restore(&mut ctx);
             };
         },
         Trap::Exception(e) => {
