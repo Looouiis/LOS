@@ -6,19 +6,26 @@
 mod io;
 #[macro_use]
 mod arch_relate;
-mod panic;
-mod stack;
-mod power;
-mod syscall;
 mod batch;
+mod panic;
+mod power;
+mod stack;
+mod syscall;
 
+use batch::{run_program, PROGRAM_MANAGER};
 use core::arch::global_asm;
-use batch::{run_app, APP_MANAGER};
 use power::shutdown;
 
 // 由于_start与架构相关，所以具体请移步arch_relate模块
 
-global_asm!(include_str!("link_app.S"));
+global_asm!(include_str!("link_program.S"));
+
+const BANNER: &str = r#"
+______                          _______________        
+___  / ______________________  ____(_)__(_)__(_)_______
+__  /  _  __ \  __ \  __ \  / / /_  /__  /__  /__  ___/
+_  /___/ /_/ / /_/ / /_/ / /_/ /_  / _  / _  / _(__  ) 
+/_____/\____/\____/\____/\__,_/ /_/  /_/  /_/  /____/  "#;
 
 fn clear_bss() {
     extern "C" {
@@ -26,7 +33,7 @@ fn clear_bss() {
         fn __bss_end();
     }
     unsafe {
-        for byte in __bss_start as usize .. __bss_end as usize {
+        for byte in __bss_start as usize..__bss_end as usize {
             (byte as *mut u8).write_volatile(0);
         }
     }
@@ -36,9 +43,11 @@ fn clear_bss() {
 fn rust_main() {
     arch_relate::prepare_registers();
     clear_bss();
-    APP_MANAGER.get().print_info();
-    let num = run_app();
-    log!("arch_relate::run_app entered {} times", num);
+    println!("{BANNER}");
+    println!("Multiprogrammed Batch Processing\n");
+    PROGRAM_MANAGER.get().print_info();
+    let num = run_program();
+    log!("arch_relate::run_program entered {} times", num);
     trace!("main trace");
     shutdown();
     // loop {}

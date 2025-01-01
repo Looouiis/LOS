@@ -199,32 +199,16 @@ impl TrapContext {
         TrapContext {
             info: RegInfo::new(),
             sstatus: sstatus::read(),
-            spec: 0
-        }
-    }
-
-    pub(crate) fn new_user(sp: usize) -> Self {
-        let mut info = RegInfo::new();
-        info.sp = sp;
-        Self {
-            info,
-            sstatus: sstatus::read(),
-            spec: 0
+            spec: 0,
         }
     }
 
     pub(crate) fn get_args(&self, arg: usize) -> usize {
         match arg {
-            0 => {
-                self.info.a0
-            }
-            1 => {
-                self.info.a1
-            }
-            2 => {
-                self.info.a2
-            }
-            _ => panic!("Unsupported arg index")
+            0 => self.info.a0,
+            1 => self.info.a1,
+            2 => self.info.a2,
+            _ => panic!("Unsupported arg index"),
         }
     }
 
@@ -275,7 +259,7 @@ pub(crate) struct RegInfo {
     pub(crate) t3: usize,
     pub(crate) t4: usize,
     pub(crate) t5: usize,
-    pub(crate) t6: usize
+    pub(crate) t6: usize,
 }
 
 impl RegInfo {
@@ -312,7 +296,7 @@ impl RegInfo {
             t3: 0,
             t4: 0,
             t5: 0,
-            t6: 0
+            t6: 0,
         }
     }
 }

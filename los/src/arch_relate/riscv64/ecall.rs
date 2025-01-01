@@ -7,8 +7,7 @@ pub fn reset(failure: bool) -> ! {
     use sbi_rt::{system_reset, NoReason, Shutdown, SystemFailure};
     if !failure {
         system_reset(Shutdown, NoReason);
-    }
-    else {
+    } else {
         system_reset(Shutdown, SystemFailure);
     }
     unreachable!();

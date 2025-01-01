@@ -1,5 +1,5 @@
-use core::fmt::Write;
 use crate::{arch_relate::ecall::putch, batch::RestoreBehavior};
+use core::fmt::Write;
 
 struct Stdout;
 
@@ -64,14 +64,11 @@ const STDOUT: usize = 1;
 pub(crate) fn linux_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehavior {
     match fd {
         STDOUT => {
-            let slice = unsafe {
-                core::slice::from_raw_parts(buf, len)
-            };
+            let slice = unsafe { core::slice::from_raw_parts(buf, len) };
             let str = core::str::from_utf8(slice).unwrap();
             print!("{}", str);
             RestoreBehavior::DirectReturen(len)
         }
-        _ => panic!("unsupported fd type: {}", fd)
+        _ => panic!("unsupported fd type: {}", fd),
     }
 }
-

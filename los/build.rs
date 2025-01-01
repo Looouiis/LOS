@@ -1,8 +1,7 @@
 use std::{env, fs, path::PathBuf};
 
-use std::io::{Result, Write};
 use std::fs::{read_dir, File};
-
+use std::io::{Result, Write};
 
 fn main() {
     let linker = &PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("linker.ld");
@@ -10,9 +9,9 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=LOG");
     println!("cargo:rustc-link-arg=-T{}", linker.display());
-    
+
     println!("cargo:rerun-if-changed={}", TARGET_PATH);
-    insert_app_data().unwrap();
+    insert_program_data().unwrap();
 }
 
 const LINK_SCRIPT: &[u8] = b"
@@ -62,9 +61,9 @@ SECTIONS
 
 static TARGET_PATH: &str = "target/riscv64gc-unknown-none-elf/release/";
 
-fn insert_app_data() -> Result<()> {
-    let mut f = File::create("src/link_app.S").unwrap();
-    let mut apps: Vec<_> = read_dir("../user/src/bin")
+fn insert_program_data() -> Result<()> {
+    let mut f = File::create("src/link_program.S").unwrap();
+    let mut programs: Vec<_> = read_dir("../user/src/bin")
         .unwrap()
         .into_iter()
         .map(|dir_entry| {
@@ -73,38 +72,37 @@ fn insert_app_data() -> Result<()> {
             name_with_ext
         })
         .collect();
-    apps.sort();
+    programs.sort();
 
     writeln!(
         f,
         r#"
     .align 3
     .section .data
-    .global _num_app
-_num_app:
+    .global _num_program
+_num_program:
     .quad {}"#,
-        apps.len()
+        programs.len()
     )?;
 
-    for i in 0..apps.len() {
-        writeln!(f, r#"    .quad app_{}_start"#, i)?;
+    for i in 0..programs.len() {
+        writeln!(f, r#"    .quad program_{}_start"#, i)?;
     }
-    writeln!(f, r#"    .quad app_{}_end"#, apps.len() - 1)?;
+    writeln!(f, r#"    .quad program_{}_end"#, programs.len() - 1)?;
 
-    for (idx, app) in apps.iter().enumerate() {
-        println!("app_{}: {}", idx, app);
+    for (idx, program) in programs.iter().enumerate() {
+        println!("program_{}: {}", idx, program);
         writeln!(
             f,
             r#"
     .section .data
-    .global app_{0}_start
-    .global app_{0}_end
-app_{0}_start:
+    .global program_{0}_start
+    .global program_{0}_end
+program_{0}_start:
     .incbin "{2}{1}.bin"
-app_{0}_end:"#,
-            idx, app, TARGET_PATH
+program_{0}_end:"#,
+            idx, program, TARGET_PATH
         )?;
     }
     Ok(())
 }
-

@@ -2,7 +2,7 @@ use core::arch::asm;
 use riscv::register::sstatus;
 use syscall_handler::trap::TrapContext;
 
-use crate::{batch::{Process, APP_MANAGER}, stack::{self, USER_STACK}};
+use crate::{batch::PROGRAM_MANAGER, stack};
 
 pub(crate) mod ecall;
 #[macro_use]
@@ -34,18 +34,17 @@ pub(crate) fn prepare_registers() {
 
 // 需保证该函数所有变量的生命周期在asm!()之前结束
 #[no_mangle]
-pub(crate) unsafe fn run_app(process: Process/*user_top: usize, entry: usize*/) {
-    let entry = process.pc;
-    // log!("entry: {:x}", entry);
+pub(crate) unsafe fn run_program(/*process: Process*/) {
     const CLEAR_SPP: usize = !(1usize << 8);
     sstatus::set_spp(sstatus::SPP::Supervisor);
     assert!(sstatus::read().spp() == sstatus::SPP::Supervisor);
-    let mgr = APP_MANAGER.get();
+    let mgr = PROGRAM_MANAGER.get();
+    let process = mgr.get_process();
     let kernel_ctx_ptr = core::ptr::addr_of!(mgr.kernel_ctx);
     let user_ctx_ptr: *const TrapContext = core::ptr::addr_of!(process.ctx);
-    // log!("run_app::user_sp: {:x}", process.ctx.info.sp);
+    let entry = process.pc;
     drop(mgr);
-    trace!("arch_relate::run_app entered");
+    trace!("arch_relate::run_program entered");
     asm!(
         // save!(x1 => a3[1]),
         save!(x2 => a3[2]),
@@ -85,6 +84,9 @@ pub(crate) unsafe fn run_app(process: Process/*user_top: usize, entry: usize*/) 
         ",
         save!(t1 => a3[33]),
         save!(t3 => a3[32]),
+        "   csrr a3, sstatus
+            andi a3, a3, {clear_spp}
+            csrw sstatus, a3",
         // load!(a2[1] => x1),
         load!(a2[2] => x2),
         // load!(a2[3] => x3),
@@ -115,11 +117,7 @@ pub(crate) unsafe fn run_app(process: Process/*user_top: usize, entry: usize*/) 
         // load!(a2[30] => x30),
         // load!(a2[31] => x31),
         // load!(a2[12] => x12),
-        "
-            csrr a3, sstatus
-            andi a3, a3, {clear_spp}
-            csrw sstatus, a3
-        0:
+        "0:
             sret
             ",
 

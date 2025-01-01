@@ -11,8 +11,7 @@ fn panic(info: &PanicInfo) -> ! {
             loc.line(),
             info.message()
         )
-    }
-    else {
+    } else {
         println!("Panicked: {}", info.message());
     }
     reset(true)
