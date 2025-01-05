@@ -6,8 +6,7 @@ use lazy_static::lazy_static;
 
 use crate::{
     arch_relate::{
-        self,
-        syscall_handler::trap::{trap_restore, TrapContext},
+        self, timer::set_nxt_trigger, trap::{trap_restore, TrapContext}
     },
     stack::USER_STACK,
 };
@@ -108,7 +107,7 @@ impl ProgramManager {
     // 将program_manager内部的指针转移指向下一个program
     fn nxt_program(&mut self) -> bool {
         let mut index = 1;
-        while index < self.program_num {
+        while index <= self.program_num {
             if self.process[(self.current_program + index) % self.program_num].status
                 == State::Ready
             {
@@ -116,7 +115,7 @@ impl ProgramManager {
             }
             index += 1;
         }
-        if index == self.program_num {
+        if index == self.program_num + 1 {
             log!("Execute complete");
             false
         } else {
@@ -161,13 +160,21 @@ impl<T> ArcCell<T> {
     }
 }
 
-#[no_mangle]
+#[inline]
 pub(crate) fn exit(code: usize) -> ! {
     log!("Program exit with {}", code);
     PROGRAM_MANAGER.get().exit_current();
     restore_to_kernel()
 }
 
+#[inline]
+pub(crate) fn reschedule(ctx: TrapContext) -> ! {
+    PROGRAM_MANAGER.get().mark_ctx(ctx);
+    set_nxt_trigger();
+    restore_to_kernel()
+}
+
+#[inline]
 pub(crate) fn sys_yield() -> RestoreBehavior {
     RestoreBehavior::Reschedule
 }
@@ -191,6 +198,7 @@ pub(crate) fn run_program() -> usize {
     entered_num
 }
 
+#[inline]
 pub(crate) fn restore_to_kernel() -> ! {
     let mut mgr = PROGRAM_MANAGER.get();
     let ctx_ptr = core::ptr::addr_of_mut!(mgr.kernel_ctx);

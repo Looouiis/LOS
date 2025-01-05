@@ -7,10 +7,12 @@ mod io;
 #[macro_use]
 mod arch_relate;
 mod batch;
+mod config;
 mod panic;
 mod power;
 mod stack;
 mod syscall;
+mod timer;
 
 use batch::{run_program, PROGRAM_MANAGER};
 use core::arch::global_asm;
@@ -39,12 +41,45 @@ fn clear_bss() {
     }
 }
 
+pub mod temp_test {
+    use crate::arch_relate;
+
+    static mut KERNEL_INTERRUPT_TRIGGERED: bool = false;
+
+    /// 检查内核中断是否触发
+    pub fn check_kernel_interrupt() -> bool {
+        unsafe { (&raw mut KERNEL_INTERRUPT_TRIGGERED as *mut bool).read_volatile() }
+    }
+    
+    /// 标记内核中断已触发
+    pub fn trigger_kernel_interrupt() {
+        unsafe {
+            (&raw mut KERNEL_INTERRUPT_TRIGGERED as *mut bool).write_volatile(true);
+        }
+    }
+    
+    pub fn test_kernel_interrupt() {
+        arch_relate::enable_kernel_interrupt();
+        loop {
+            if check_kernel_interrupt() {
+                println!("kernel interrupt returned.");
+                break;
+            }
+        }
+        arch_relate::disable_kernel_interrupt();
+    }
+}
+
 #[no_mangle]
 fn rust_main() {
     arch_relate::prepare_registers();
     clear_bss();
     println!("{BANNER}");
     println!("Multiprogrammed Batch Processing\n");
+    timer::init();
+
+    // temp_test::test_kernel_interrupt();
+
     PROGRAM_MANAGER.get().print_info();
     let num = run_program();
     log!("arch_relate::run_program entered {} times", num);

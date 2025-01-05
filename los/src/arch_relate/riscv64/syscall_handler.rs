@@ -1,16 +1,12 @@
 use riscv::register::{
-    scause::{self, Exception, Trap},
+    scause::{self, Exception, Interrupt, Trap},
     sstatus,
 };
-use trap::{trap_restore, TrapContext};
-
 use crate::{
-    batch::{exit, restore_to_kernel, PROGRAM_MANAGER},
-    syscall::syscall,
+    batch::{exit, reschedule, PROGRAM_MANAGER}, syscall::syscall, temp_test
 };
 
-#[macro_use]
-pub(crate) mod trap;
+use super::{timer::set_nxt_trigger, trap::{trap_restore, TrapContext}};
 
 #[no_mangle]
 pub fn syscall_service(mut ctx: TrapContext) {
@@ -29,8 +25,7 @@ pub fn syscall_service(mut ctx: TrapContext) {
                     };
                 }
                 crate::batch::RestoreBehavior::Reschedule => {
-                    PROGRAM_MANAGER.get().mark_ctx(ctx);
-                    restore_to_kernel();
+                    reschedule(ctx);
                 }
             }
         }
@@ -42,8 +37,15 @@ pub fn syscall_service(mut ctx: TrapContext) {
             exit(255)
         }
         Trap::Interrupt(i) => {
-            log!("Unsupported interrupt: {:?}, kernel kill it simply", i);
-            exit(255)
+            if sstatus::read().spp() == sstatus::SPP::Supervisor {
+                temp_test::trigger_kernel_interrupt();
+                set_nxt_trigger();
+            } else if Interrupt::SupervisorTimer == i {
+                reschedule(ctx);
+            } else {
+                log!("Unsupported interrupt: {:?}, kernel kill it simply", i);
+                exit(255)
+            }
         }
     }
 }

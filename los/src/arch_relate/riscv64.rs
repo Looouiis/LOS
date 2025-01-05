@@ -1,10 +1,13 @@
 use core::arch::asm;
 use riscv::register::sstatus;
-use syscall_handler::trap::TrapContext;
+use trap::TrapContext;
 
 use crate::{batch::PROGRAM_MANAGER, stack};
 
+#[macro_use]
+pub(crate) mod trap;
 pub(crate) mod ecall;
+pub(crate) mod timer;
 #[macro_use]
 pub(crate) mod syscall_handler;
 
@@ -22,7 +25,7 @@ unsafe extern "C" fn _start() -> ! {
         ",
         stack_btn = sym KERNAL_STACK,
         stack_size = const KERNAL_STACK_SIZE,
-        trap_vec = sym syscall_handler::trap::trap_vec
+        trap_vec = sym trap::trap_vec
     );
     loop {}
 }
@@ -78,7 +81,7 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
         // save!(x31 => a3[31]),
         "   csrr t3, sstatus
             csrw sepc, t0
-            csrrw sp, sscratch, sp
+            csrw sscratch, sp
             la t1, 0f
             addi t1, t1, 4
         ",
@@ -126,6 +129,14 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
         in("a3") kernel_ctx_ptr,
         clear_spp = const CLEAR_SPP,
     );
+}
+
+pub(crate) fn enable_kernel_interrupt() {
+    unsafe { riscv::register::sstatus::set_sie() };
+}
+
+pub(crate) fn disable_kernel_interrupt() {
+    unsafe { riscv::register::sstatus::clear_sie() };
 }
 
 macro_rules! fence {
