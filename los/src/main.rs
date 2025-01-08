@@ -50,14 +50,14 @@ pub mod temp_test {
     pub fn check_kernel_interrupt() -> bool {
         unsafe { (&raw mut KERNEL_INTERRUPT_TRIGGERED as *mut bool).read_volatile() }
     }
-    
+
     /// 标记内核中断已触发
     pub fn trigger_kernel_interrupt() {
         unsafe {
             (&raw mut KERNEL_INTERRUPT_TRIGGERED as *mut bool).write_volatile(true);
         }
     }
-    
+
     pub fn test_kernel_interrupt() {
         arch_relate::enable_kernel_interrupt();
         loop {

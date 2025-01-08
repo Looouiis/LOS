@@ -45,7 +45,7 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
     let process = mgr.get_process();
     let kernel_ctx_ptr = core::ptr::addr_of!(mgr.kernel_ctx);
     let user_ctx_ptr: *const TrapContext = core::ptr::addr_of!(process.ctx);
-    let entry = process.pc;
+    let entry = process.ctx.sepc;
     drop(mgr);
     trace!("arch_relate::run_program entered");
     asm!(
@@ -81,7 +81,7 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
         // save!(x31 => a3[31]),
         "   csrr t3, sstatus
             csrw sepc, t0
-            csrw sscratch, sp
+            csrw sscratch, a2
             la t1, 0f
             addi t1, t1, 4
         ",

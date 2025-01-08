@@ -61,15 +61,17 @@ impl BuildArgs {
             .unwrap();
         Cargo::build()
             .package("los")
-            .conditional(!self.debug, |cargo| {
-                cargo.release();
-            })
+            // .conditional(!self.debug, |cargo| {
+            // cargo.release();
+            // })
+            .release()
             .target(target)
             .invoke();
         let elf = project_path()
             .join("target")
             .join(target)
-            .join(if self.debug { "debug" } else { "release" })
+            // .join(if self.debug { "debug" } else { "release" })
+            .join("release")
             .join("los");
         if binary {
             let bin = elf.with_extension("bin");

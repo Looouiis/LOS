@@ -1,6 +1,8 @@
 use core::arch::asm;
 
-use riscv::register::sstatus::{self, Sstatus};
+use riscv::register::sstatus::Sstatus;
+
+use crate::stack::{KERNAL_STACK_SIZE, TRAP_STACK};
 
 #[cfg(target_pointer_width = "32")]
 #[macro_use]
@@ -38,7 +40,7 @@ mod arch {
 #[cfg(target_pointer_width = "64")]
 #[macro_use]
 mod arch {
-    pub(crate) const WORD_SIZE: usize = 8;
+    // pub(crate) const WORD_SIZE: usize = 8;
     macro_rules! save {
         ($reg:ident => $ptr:ident[$pos:expr]) => {
             concat!(
@@ -86,7 +88,6 @@ pub(crate) unsafe extern "C" fn trap_vec() {
 pub(crate) unsafe extern "C" fn trap_handler() {
     asm!(
         "   csrrw  sp, sscratch, sp
-            addi sp, sp, -34 * {word_size}
         ",
         save!(x1 => sp[1]),
         save!(x3 => sp[3]),
@@ -125,9 +126,13 @@ pub(crate) unsafe extern "C" fn trap_handler() {
         save!(t1 => sp[33]),
         save!(t2 => sp[2]),
         "   mv a0, sp
+            la sp, {stack_btn}
+            li t0, {stack_size}
+            add sp, sp, t0
             j syscall_service
         ",
-        word_size = const arch::WORD_SIZE,
+        stack_btn = sym TRAP_STACK,
+        stack_size = const KERNAL_STACK_SIZE,
         options(noreturn)
     );
 }
@@ -173,12 +178,10 @@ pub(crate) unsafe extern "C" fn trap_restore(ctx: &mut TrapContext) -> ! {
         load!(sp[30] => x30),
         load!(sp[31] => x31),
         "
-            addi sp, sp, 34 * {word_size}
             csrrw  sp, sscratch, sp
             sret
         ",
         in ("a0") ctx,
-        word_size = const arch::WORD_SIZE,
         options(noreturn)
     );
 }
@@ -191,15 +194,15 @@ pub struct TrapContext {
     // 32
     pub sstatus: Sstatus,
     // 33
-    pub spec: usize,
+    pub sepc: usize,
 }
 
 impl TrapContext {
     pub(crate) fn new() -> Self {
         TrapContext {
             info: RegInfo::new(),
-            sstatus: sstatus::read(),
-            spec: 0,
+            sstatus: riscv::register::sstatus::read(),
+            sepc: 0,
         }
     }
 
@@ -221,7 +224,7 @@ impl TrapContext {
     }
 
     pub(crate) fn ret_at_nxt(&mut self) {
-        self.spec += 4;
+        self.sepc += 4;
     }
 }
 

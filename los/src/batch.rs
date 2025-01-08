@@ -6,7 +6,9 @@ use lazy_static::lazy_static;
 
 use crate::{
     arch_relate::{
-        self, timer::set_nxt_trigger, trap::{trap_restore, TrapContext}
+        self,
+        timer::set_nxt_trigger,
+        trap::{trap_restore, TrapContext},
     },
     stack::USER_STACK,
 };
@@ -28,7 +30,7 @@ lazy_static! {
             let ptr = _num_program as usize as *const usize;
             let program_num = ptr.read_volatile();
             let process: [Process; MAX_PROGRAM_NUM + 1] = [Process {
-                pc: 0,
+                // pc: 0,
                 start: 0,
                 len: 0,
                 status: State::Exited,
@@ -49,7 +51,7 @@ lazy_static! {
 #[derive(Clone, Copy)]
 pub(crate) struct Process {
     pub(crate) start: usize,
-    pub(crate) pc: usize,
+    // pub(crate) pc: usize,
     pub(crate) len: usize,
     pub(crate) status: State,
     // stack: Option<UserStack>,
@@ -85,7 +87,7 @@ impl ProgramManager {
         for i in 0..=program_num {
             let start = ptr.add(1 + i).read_volatile();
             self.process[i].start = start;
-            self.process[i].pc = start;
+            self.process[i].ctx.sepc = start;
             self.process[i].len = ProgramManager::LIMIT;
             self.process[i].status = State::Ready;
             self.process[i].stack = Some(i);
@@ -132,14 +134,6 @@ impl ProgramManager {
     pub(crate) fn exit_current(&mut self) {
         self.process[self.current_program].status = State::Exited;
     }
-
-    pub(crate) fn mark_pc(&mut self, pc: usize) {
-        self.process[self.current_program].pc = pc;
-    }
-
-    pub(crate) fn mark_ctx(&mut self, ctx: TrapContext) {
-        self.process[self.current_program].ctx = ctx;
-    }
 }
 
 unsafe impl<T> Sync for ArcCell<T> {}
@@ -168,8 +162,7 @@ pub(crate) fn exit(code: usize) -> ! {
 }
 
 #[inline]
-pub(crate) fn reschedule(ctx: TrapContext) -> ! {
-    PROGRAM_MANAGER.get().mark_ctx(ctx);
+pub(crate) fn reschedule() -> ! {
     set_nxt_trigger();
     restore_to_kernel()
 }

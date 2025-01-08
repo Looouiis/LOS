@@ -46,5 +46,7 @@ impl UserStack {
 #[link_section = ".bss.stack"]
 pub(crate) static KERNAL_STACK: KernelStack = KernelStack([0; KERNAL_STACK_SIZE]);
 
+pub(crate) static TRAP_STACK: KernelStack = KernelStack([0; KERNAL_STACK_SIZE]);
+
 pub(crate) static USER_STACK: [UserStack; MAX_PROGRAM_NUM] =
     [UserStack([0; USER_STACK_SIZE]); MAX_PROGRAM_NUM];
