@@ -22,7 +22,7 @@ pub fn syscall_service(mut ctx: TrapContext) {
                 ctx.get_syscall_id(),
                 [ctx.get_args(0), ctx.get_args(1), ctx.get_args(2)],
             ) {
-                crate::batch::RestoreBehavior::DirectReturen(res) => {
+                crate::batch::RestoreBehavior::DirectReturn(res) => {
                     ctx.set_syscall_res(res);
                     unsafe {
                         trap_restore(&mut ctx);

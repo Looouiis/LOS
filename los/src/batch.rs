@@ -20,7 +20,7 @@ extern "C" {
 pub(crate) const MAX_PROGRAM_NUM: usize = 20;
 
 pub(crate) enum RestoreBehavior {
-    DirectReturen(usize),
+    DirectReturn(usize),
     Reschedule,
 }
 
@@ -212,5 +212,5 @@ pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> RestoreBe
         }
         id.write_volatile(mgr.current_program);
     };
-    RestoreBehavior::DirectReturen(min_len)
+    RestoreBehavior::DirectReturn(min_len)
 }

@@ -75,7 +75,7 @@ fn rust_main() {
     arch_relate::prepare_registers();
     clear_bss();
     println!("{BANNER}");
-    println!("Multiprogrammed Batch Processing\n");
+    println!("Time Sharing Multitasking\n");
     timer::init();
 
     // temp_test::test_kernel_interrupt();

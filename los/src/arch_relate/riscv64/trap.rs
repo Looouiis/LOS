@@ -230,6 +230,7 @@ impl TrapContext {
 
 #[allow(unused)]
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub(crate) struct RegInfo {
     pub(crate) x0: usize,
     pub(crate) ra: usize,
