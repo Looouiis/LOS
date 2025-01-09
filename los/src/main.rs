@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(naked_functions)]
 
+extern crate alloc;
+
 #[macro_use]
 mod io;
 #[macro_use]
@@ -13,7 +15,9 @@ mod power;
 mod stack;
 mod syscall;
 mod timer;
+mod allocator;
 
+use alloc::{boxed::Box, vec};
 use batch::{run_program, PROGRAM_MANAGER};
 use core::arch::global_asm;
 use power::shutdown;
@@ -77,6 +81,16 @@ fn rust_main() {
     println!("{BANNER}");
     println!("Time Sharing Multitasking\n");
     timer::init();
+    allocator::init();
+
+    {let a = Box::new(5);
+    println!("a: {}", *a);
+    let mut vec = vec![1, 2, 3];
+    vec.push(4);
+    vec.push(5);
+    for i in vec {
+        println!("vec: {i}");
+    }}
 
     // temp_test::test_kernel_interrupt();
 
