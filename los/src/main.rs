@@ -1,8 +1,11 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions)]
+#![feature(alloc_error_handler)]
 
 extern crate alloc;
+#[macro_use]
+extern crate bitflags;
 
 #[macro_use]
 mod io;
@@ -16,8 +19,8 @@ mod stack;
 mod syscall;
 mod timer;
 mod allocator;
+mod mem;
 
-use alloc::{boxed::Box, vec};
 use batch::{run_program, PROGRAM_MANAGER};
 use core::arch::global_asm;
 use power::shutdown;
@@ -79,18 +82,9 @@ fn rust_main() {
     arch_relate::prepare_registers();
     clear_bss();
     println!("{BANNER}");
-    println!("Time Sharing Multitasking\n");
     timer::init();
     allocator::init();
-
-    {let a = Box::new(5);
-    println!("a: {}", *a);
-    let mut vec = vec![1, 2, 3];
-    vec.push(4);
-    vec.push(5);
-    for i in vec {
-        println!("vec: {i}");
-    }}
+    println!();
 
     // temp_test::test_kernel_interrupt();
 

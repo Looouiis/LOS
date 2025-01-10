@@ -51,7 +51,7 @@ macro_rules! print {
 #[macro_export]
 macro_rules! println {
     () => {
-        $crate::syscall::putch('\n' as usize);
+        $crate::arch_relate::ecall::putch('\n' as usize);
     };
     ($($arg:tt)*) => {{
         $crate::io::print_fmt(core::format_args!($($arg)*));

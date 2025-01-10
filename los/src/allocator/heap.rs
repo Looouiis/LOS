@@ -80,7 +80,7 @@ impl Heap {
     unsafe fn alloc(&mut self, layout: core::alloc::Layout) -> *mut u8 {
         let size = layout.size().next_power_of_two();
         let idx = size.trailing_zeros() as usize;
-        for i in idx .. LINK_LIST_NUM {
+        for i in idx ..= LINK_LIST_NUM {
             if !self.usize_list[i].is_empty() {
                 for j in (idx + 1 ..= i).rev() {
                     match self.usize_list[j].pop() {
@@ -91,7 +91,10 @@ impl Heap {
                         None => panic!("internal error"),
                     }
                 }
-                break;                
+                break;       
+            }
+            if i == LINK_LIST_NUM {
+                return ptr::null_mut(); // 已经没有可用空间了
             }
         }
         assert!(!self.usize_list[idx].is_empty());
@@ -138,7 +141,7 @@ impl Heap {
     fn dbg(&self) {
         for i in 0 .. LINK_LIST_NUM {
             if !self.usize_list[i].is_empty() {
-                print!("frame with 0x{:<8x} size: ", 1 << i);
+                print!("Block size: 0x{:<8x}\tdata: ", 1 << i);
                 self.usize_list[i].dbg();
             }
         }
