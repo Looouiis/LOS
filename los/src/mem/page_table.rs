@@ -1,4 +1,7 @@
-use super::address::PhyPageNum;
+use alloc::vec::Vec;
+use alloc::vec;
+
+use super::{address::{PhyPageNum, VirPageNum}, allocator::{frame::FrameTracker, FRAME_ALLOCATOR}};
 
 bitflags! {
     pub struct PTEFlags: u8 {
@@ -40,5 +43,20 @@ impl PageTableEntry {
 
     pub(crate) fn is_valid(&self) -> bool {
         self.bits & 1 == 1
+    }
+}
+
+pub(crate) struct PageTable {
+    root_ppn: PhyPageNum,
+    frames: Vec<FrameTracker>
+}
+
+impl PageTable {
+    pub fn new() -> Self {
+        let frame = FRAME_ALLOCATOR.alloc().unwrap();
+        Self {
+            root_ppn: frame.ppn,
+            frames: vec![frame]
+        }
     }
 }

@@ -18,10 +18,12 @@ mod power;
 mod stack;
 mod syscall;
 mod timer;
-mod allocator;
 mod mem;
 
+mod temp_test;
+
 use batch::{run_program, PROGRAM_MANAGER};
+use temp_test::frame_allocator_test;
 use core::arch::global_asm;
 use power::shutdown;
 
@@ -48,33 +50,23 @@ fn clear_bss() {
     }
 }
 
-pub mod temp_test {
-    use crate::arch_relate;
-
-    static mut KERNEL_INTERRUPT_TRIGGERED: bool = false;
-
-    /// 检查内核中断是否触发
-    pub fn check_kernel_interrupt() -> bool {
-        unsafe { (&raw mut KERNEL_INTERRUPT_TRIGGERED as *mut bool).read_volatile() }
+fn print_kernel_info() {
+    unsafe extern "C" {
+        fn __text_start();
+        fn __text_end();
+        fn __rodata_start();
+        fn __rodata_end();
+        fn __data_start();
+        fn __data_end();
+        fn __bss_end();
     }
-
-    /// 标记内核中断已触发
-    pub fn trigger_kernel_interrupt() {
-        unsafe {
-            (&raw mut KERNEL_INTERRUPT_TRIGGERED as *mut bool).write_volatile(true);
-        }
-    }
-
-    pub fn test_kernel_interrupt() {
-        arch_relate::enable_kernel_interrupt();
-        loop {
-            if check_kernel_interrupt() {
-                println!("kernel interrupt returned.");
-                break;
-            }
-        }
-        arch_relate::disable_kernel_interrupt();
-    }
+    println!(".text [{:#x}, {:#x})", __text_start as usize, __text_end as usize);
+    println!(".rodata [{:#x}, {:#x})", __rodata_start as usize, __rodata_end as usize);
+    println!(".data [{:#x}, {:#x})", __data_start as usize, __data_end as usize);
+    println!(
+        ".bss [{:#x}, {:#x})",
+        __data_end as usize, __bss_end as usize
+    );
 }
 
 #[no_mangle]
@@ -83,8 +75,10 @@ fn rust_main() {
     clear_bss();
     println!("{BANNER}");
     timer::init();
-    allocator::init();
+    mem::init();
     println!();
+    print_kernel_info();
+    frame_allocator_test();
 
     // temp_test::test_kernel_interrupt();
 

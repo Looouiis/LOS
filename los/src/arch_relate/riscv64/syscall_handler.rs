@@ -1,7 +1,6 @@
 use crate::{
     batch::{exit, reschedule},
     syscall::syscall,
-    temp_test,
 };
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
@@ -43,7 +42,7 @@ pub fn syscall_service(mut ctx: TrapContext) {
         }
         Trap::Interrupt(i) => {
             if sstatus::read().spp() == sstatus::SPP::Supervisor {
-                temp_test::trigger_kernel_interrupt();
+                crate::temp_test::trigger_kernel_interrupt();
                 set_nxt_trigger();
             } else if Interrupt::SupervisorTimer == i {
                 reschedule();
