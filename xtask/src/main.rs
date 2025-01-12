@@ -55,10 +55,10 @@ impl BuildArgs {
             }
             None => "riscv64gc-unknown-none-elf",
         };
-        Command::new("python")
-            .arg("./user/build.py")
-            .status()
-            .unwrap();
+        // Command::new("python")
+        //     .arg("./user/build.py")
+        //     .status()
+        //     .unwrap();
         Cargo::build()
             .package("los")
             // .conditional(!self.debug, |cargo| {

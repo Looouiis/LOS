@@ -139,6 +139,15 @@ pub(crate) fn disable_kernel_interrupt() {
     unsafe { riscv::register::sstatus::clear_sie() };
 }
 
+#[no_mangle]
+pub(crate) fn enable_virtual_address(root_page_address: usize) {
+    riscv::register::satp::write(8usize << 60 | root_page_address);
+    unsafe {
+        asm!("sfence.vma")
+    }
+}
+
+#[allow(unused)]
 macro_rules! fence {
     () => {
         core::arch::asm!("fence.i");

@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use crate::{mem::allocator::{frame::FrameTracker, FRAME_ALLOCATOR}, arch_relate};
+use crate::{arch_relate, mem::{address::VirAddr, allocator::{frame::FrameTracker, FRAME_ALLOCATOR}, memory_set::KERNEL_SPACE}};
 
 static mut KERNEL_INTERRUPT_TRIGGERED: bool = false;
 
@@ -68,4 +68,35 @@ pub fn frame_allocator_test() {
     }
     drop(v);
     println!("frame_allocator_test passed!");
+}
+
+pub fn remap_test() {
+    extern "C" {
+        fn __text_start();
+        fn __text_end();
+        fn __rodata_start();
+        fn __rodata_end();
+        fn __data_start();
+        fn __data_end();
+        fn __bss_start_with_stack();
+        fn __bss_end();
+        fn __kernel_end();
+    }
+    let mut kernel_space = KERNEL_SPACE.get();
+    let mid_text: VirAddr = ((__text_start as usize + __text_end as usize) / 2).into();
+    let mid_rodata: VirAddr = ((__rodata_start as usize + __rodata_end as usize) / 2).into();
+    let mid_data: VirAddr = ((__data_start as usize + __data_end as usize) / 2).into();
+    assert_eq!(
+        kernel_space.page_table.vpn_to_pte(mid_text.floor_to_vpn()).unwrap().writable(),
+        false
+    );
+    assert_eq!(
+        kernel_space.page_table.vpn_to_pte(mid_rodata.floor_to_vpn()).unwrap().writable(),
+        false,
+    );
+    assert_eq!(
+        kernel_space.page_table.vpn_to_pte(mid_data.floor_to_vpn()).unwrap().executable(),
+        false,
+    );
+    println!("remap_test passed!");
 }

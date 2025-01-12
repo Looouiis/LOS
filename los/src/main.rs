@@ -23,7 +23,8 @@ mod mem;
 mod temp_test;
 
 use batch::{run_program, PROGRAM_MANAGER};
-use temp_test::frame_allocator_test;
+use mem::address::{VirAddr, VirPageNum};
+use temp_test::{frame_allocator_test, remap_test};
 use core::arch::global_asm;
 use power::shutdown;
 
@@ -50,25 +51,6 @@ fn clear_bss() {
     }
 }
 
-fn print_kernel_info() {
-    unsafe extern "C" {
-        fn __text_start();
-        fn __text_end();
-        fn __rodata_start();
-        fn __rodata_end();
-        fn __data_start();
-        fn __data_end();
-        fn __bss_end();
-    }
-    println!(".text [{:#x}, {:#x})", __text_start as usize, __text_end as usize);
-    println!(".rodata [{:#x}, {:#x})", __rodata_start as usize, __rodata_end as usize);
-    println!(".data [{:#x}, {:#x})", __data_start as usize, __data_end as usize);
-    println!(
-        ".bss [{:#x}, {:#x})",
-        __data_end as usize, __bss_end as usize
-    );
-}
-
 #[no_mangle]
 fn rust_main() {
     arch_relate::prepare_registers();
@@ -77,15 +59,16 @@ fn rust_main() {
     timer::init();
     mem::init();
     println!();
-    print_kernel_info();
     frame_allocator_test();
+    remap_test();
 
     // temp_test::test_kernel_interrupt();
 
     PROGRAM_MANAGER.get().print_info();
-    let num = run_program();
-    log!("arch_relate::run_program entered {} times", num);
+    // let num = run_program();
+    // log!("arch_relate::run_program entered {} times", num);
     trace!("main trace");
+    // HEAP_ALLOCATOR.check_leak();
     shutdown();
     // loop {}
 }

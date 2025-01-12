@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/target/riscv64gc-unknown-none-elf/release/los",
             "miDebuggerServerAddress": "localhost:1234",
             "miDebuggerPath": "gdb",
-            "preLaunchTask": "launch qemu",
+            // "preLaunchTask": "launch qemu",
             "cwd": "${fileDirname}",
             "args": [],
             "stopAtEntry": false,

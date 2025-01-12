@@ -4,6 +4,7 @@ use spin::Mutex;
 
 use crate::config::HEAP_SIZE;
 
+#[link_section = ".data"]
 pub(crate) static HEAP: [usize; HEAP_SIZE] = [0; HEAP_SIZE];
 
 pub struct BuddyAllocator {
@@ -37,6 +38,13 @@ impl BuddyAllocator {
         self.inner
             .lock()
             .init(start, start + size);
+    }
+
+    #[allow(unused)]
+    pub fn check_leak(&self) {
+        self.inner
+            .lock()
+            .check_leak();
     }
 }
 
@@ -145,6 +153,10 @@ impl Heap {
                 self.usize_list[i].dbg();
             }
         }
+    }
+
+    pub(crate) fn check_leak(&self) {
+        assert!(self.alloc_cnt == 0, "{} alloc hasn't been free yet", self.alloc_cnt);
     }
 }
 

@@ -31,8 +31,8 @@ lazy_static! {
             let program_num = ptr.read_volatile();
             let process: [Process; MAX_PROGRAM_NUM + 1] = [Process {
                 // pc: 0,
-                start: 0,
-                len: 0,
+                // start: 0,
+                // len: 0,
                 status: State::Exited,
                 stack: None,
                 ctx: TrapContext::new(),
@@ -50,9 +50,9 @@ lazy_static! {
 
 #[derive(Clone, Copy)]
 pub(crate) struct Process {
-    pub(crate) start: usize,
+    // pub(crate) start: usize,
     // pub(crate) pc: usize,
-    pub(crate) len: usize,
+    // pub(crate) len: usize,
     pub(crate) status: State,
     // stack: Option<UserStack>,
     pub(crate) stack: Option<usize>,
@@ -81,29 +81,35 @@ impl ProgramManager {
         log!("Program_num: {}", self.program_num);
     }
 
-    unsafe fn load_program(&mut self) {
+    unsafe fn get_program_elf_bytes(&mut self, id: usize) -> &'static [u8] {
+        // let ptr = _num_program as usize as *const usize;
+        // let program_num = ptr.read_volatile();
+        // for i in 0..=program_num {
+        //     let start = ptr.add(1 + i).read_volatile();
+        //     self.process[i].start = start;
+        //     self.process[i].ctx.sepc = start;
+        //     self.process[i].len = ProgramManager::LIMIT;
+        //     self.process[i].status = State::Ready;
+        //     self.process[i].stack = Some(i);
+        //     self.process[i].ctx.info.sp = USER_STACK[i].get_sp_top();
+        // }
+        // (0..self.program_num).for_each(|id| {
+        //     let mut ptr = (Self::ENTRY + id * Self::LIMIT) as *mut u8;
+        //     (self.process[id].start..self.process[id].start + self.process[id].len).for_each(
+        //         |raw| {
+        //             let ch = (raw as *mut u8).read_volatile();
+        //             ptr.write_volatile(ch);
+        //             ptr = ptr.add(1);
+        //         },
+        //     );
+        //     fence!();
+        // });
+        self.process[id].stack = Some(id);
+        self.process[id].ctx.info.sp = USER_STACK[id].get_sp_top();
         let ptr = _num_program as usize as *const usize;
-        let program_num = ptr.read_volatile();
-        for i in 0..=program_num {
-            let start = ptr.add(1 + i).read_volatile();
-            self.process[i].start = start;
-            self.process[i].ctx.sepc = start;
-            self.process[i].len = ProgramManager::LIMIT;
-            self.process[i].status = State::Ready;
-            self.process[i].stack = Some(i);
-            self.process[i].ctx.info.sp = USER_STACK[i].get_sp_top();
-        }
-        (0..self.program_num).for_each(|id| {
-            let mut ptr = (Self::ENTRY + id * Self::LIMIT) as *mut u8;
-            (self.process[id].start..self.process[id].start + self.process[id].len).for_each(
-                |raw| {
-                    let ch = (raw as *mut u8).read_volatile();
-                    ptr.write_volatile(ch);
-                    ptr = ptr.add(1);
-                },
-            );
-            fence!();
-        });
+        let program_start_ptr = core::slice::from_raw_parts(ptr.add(1), self.program_num + 1);
+        assert!(id < self.program_num);
+        core::slice::from_raw_parts(program_start_ptr[id] as *const u8, program_start_ptr[id + 1] - program_start_ptr[id])
     }
 
     // 将program_manager内部的指针转移指向下一个program
@@ -143,7 +149,7 @@ pub(crate) struct ArcCell<T> {
 }
 
 impl<T> ArcCell<T> {
-    fn new(item: T) -> Self {
+    pub(crate) fn new(item: T) -> Self {
         Self {
             inner: RefCell::new(item),
         }
@@ -174,7 +180,7 @@ pub(crate) fn sys_yield() -> RestoreBehavior {
 
 pub(crate) fn run_program() -> usize {
     let mut mgr = PROGRAM_MANAGER.get();
-    unsafe { mgr.load_program() };
+    unsafe { mgr.get_program_elf_bytes(1) };
     drop(mgr);
     let mut entered_num = 0;
     loop {

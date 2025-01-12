@@ -27,6 +27,10 @@ SECTIONS
     __text_start = .;
     .text : {
         *(.text.entry)
+        . = ALIGN(4K);
+        __trampoline_start = .;
+        *(.text.trampoline);
+        . = ALIGN(4K);
         *(.text .text.*)
     }
     . = ALIGN(4K);
@@ -47,6 +51,7 @@ SECTIONS
     }
     . = ALIGN(4K);
     __data_end = .;
+    __bss_start_with_stack = .;
 
     .bss : {
         *(.bss.stack)
@@ -55,6 +60,7 @@ SECTIONS
         *(.sbss .sbss.*)
     }
 
+    . = ALIGN(4K);
     __bss_end = .;
     __kernel_end = .;
 }";
