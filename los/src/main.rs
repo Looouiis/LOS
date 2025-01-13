@@ -23,7 +23,6 @@ mod mem;
 mod temp_test;
 
 use batch::{run_program, PROGRAM_MANAGER};
-use mem::address::{VirAddr, VirPageNum};
 use temp_test::{frame_allocator_test, remap_test};
 use core::arch::global_asm;
 use power::shutdown;
@@ -65,6 +64,7 @@ fn rust_main() {
     // temp_test::test_kernel_interrupt();
 
     PROGRAM_MANAGER.get().print_info();
+    PROGRAM_MANAGER.get().init();
     // let num = run_program();
     // log!("arch_relate::run_program entered {} times", num);
     trace!("main trace");

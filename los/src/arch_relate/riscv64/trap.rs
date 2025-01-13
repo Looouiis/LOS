@@ -85,6 +85,7 @@ pub(crate) unsafe extern "C" fn trap_vec() {
 }
 
 #[no_mangle]
+#[link_section = ".text.trampoline"]
 pub(crate) unsafe extern "C" fn trap_handler() {
     asm!(
         "   csrrw  sp, sscratch, sp
@@ -125,11 +126,16 @@ pub(crate) unsafe extern "C" fn trap_handler() {
         save!(t0 => sp[32]),
         save!(t1 => sp[33]),
         save!(t2 => sp[2]),
-        "   mv a0, sp
+        load!(sp[34] => t0),
+        load!(sp[36] => t1),
+        // load!(sp[35] => sp),
+        "   csrw satp, t0
+            mv a0, sp
             la sp, {stack_btn}
             li t0, {stack_size}
             add sp, sp, t0
-            j syscall_service
+            sfence.vma
+            jr t1           // jump to syscall_service
         ",
         stack_btn = sym TRAP_STACK,
         stack_size = const KERNAL_STACK_SIZE,
@@ -138,9 +144,12 @@ pub(crate) unsafe extern "C" fn trap_handler() {
 }
 
 #[no_mangle]
+#[link_section = ".text.trampoline"]
 pub(crate) unsafe extern "C" fn trap_restore(ctx: &mut TrapContext) -> ! {
     asm!(
-        "   mv sp, a0",
+        "   csrw satp, a1,
+            sfence.vma
+            mv sp, a0",
         load!(sp[32] => t0),
         load!(sp[33] => t1),
         load!(sp[2] => t2),
@@ -187,7 +196,6 @@ pub(crate) unsafe extern "C" fn trap_restore(ctx: &mut TrapContext) -> ! {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
 pub struct TrapContext {
     // 0-31
     pub info: RegInfo,
@@ -195,6 +203,12 @@ pub struct TrapContext {
     pub sstatus: Sstatus,
     // 33
     pub sepc: usize,
+    // 34
+    pub kernel_satp: usize,
+    // 35
+    pub kernel_sp: usize,
+    // 36
+    pub trap_handler: usize
 }
 
 impl TrapContext {
@@ -203,6 +217,9 @@ impl TrapContext {
             info: RegInfo::new(),
             sstatus: riscv::register::sstatus::read(),
             sepc: 0,
+            kernel_satp: 0,
+            kernel_sp: 0,
+            trap_handler: 0
         }
     }
 

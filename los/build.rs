@@ -105,7 +105,7 @@ _num_program:
     .global program_{0}_start
     .global program_{0}_end
 program_{0}_start:
-    .incbin "{2}{1}.bin"
+    .incbin "{2}{1}"
 program_{0}_end:"#,
             idx, program, TARGET_PATH
         )?;

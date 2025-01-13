@@ -60,6 +60,11 @@ impl BuildArgs {
         //     .status()
         //     .unwrap();
         Cargo::build()
+            .package("user")
+            .release()
+            .target(target)
+            .invoke();
+        Cargo::build()
             .package("los")
             // .conditional(!self.debug, |cargo| {
             // cargo.release();

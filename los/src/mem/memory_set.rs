@@ -121,7 +121,7 @@ impl MemorySet {
         self.areas.push(map_area);
     }
 
-    fn insert_framed_area(&mut self, start: VirAddr, end: VirAddr, permission: MapPermission) {
+    pub(crate) fn insert_framed_area(&mut self, start: VirAddr, end: VirAddr, permission: MapPermission) {
         self.areas.push(MapArea::new(start, end, MapType::Framed, permission));
     }
 
@@ -208,13 +208,13 @@ impl MemorySet {
             }
         }
         let max_end_va: VirAddr = max_end_vpn.into();
-        let mut user_stack_btm: usize = max_end_va.into();
+        let mut user_stack_btm_va: usize = max_end_va.into();
         // 在各段和栈底之间插入空白的守护页面
-        user_stack_btm += PAGE_SIZE;
-        let user_stack_top = user_stack_btm + USER_STACK_SIZE;
-        memory_set.push_area(MapArea::new(user_stack_btm.into(), user_stack_top.into(), MapType::Framed, MapPermission::R | MapPermission::W | MapPermission::U), None);
+        user_stack_btm_va += PAGE_SIZE;
+        let user_stack_top_va = user_stack_btm_va + USER_STACK_SIZE;
+        memory_set.push_area(MapArea::new(user_stack_btm_va.into(), user_stack_top_va.into(), MapType::Framed, MapPermission::R | MapPermission::W | MapPermission::U), None);
         memory_set.push_area(MapArea::new(TRAP_CONTEXT.into(), TRAMPOLINE.into(), MapType::Framed, MapPermission::R | MapPermission::W), None);
-        todo!()
+        (memory_set, user_stack_top_va, elf.header.pt2.entry_point() as usize)
     }
 
     pub(crate) fn activate(&self) {

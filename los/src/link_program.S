@@ -12,12 +12,12 @@ _num_program:
     .global program_0_start
     .global program_0_end
 program_0_start:
-    .incbin "target/riscv64gc-unknown-none-elf/release/a.bin"
+    .incbin "target/riscv64gc-unknown-none-elf/release/a"
 program_0_end:
 
     .section .data
     .global program_1_start
     .global program_1_end
 program_1_start:
-    .incbin "target/riscv64gc-unknown-none-elf/release/b.bin"
+    .incbin "target/riscv64gc-unknown-none-elf/release/b"
 program_1_end:

@@ -42,10 +42,15 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
     sstatus::set_spp(sstatus::SPP::Supervisor);
     assert!(sstatus::read().spp() == sstatus::SPP::Supervisor);
     let mgr = PROGRAM_MANAGER.get();
-    let process = mgr.get_process();
+    let guard = mgr.get_process().lock();
+    let process = match guard.as_ref() {
+        Some(process) => process,
+        None => return,
+    };
     let kernel_ctx_ptr = core::ptr::addr_of!(mgr.kernel_ctx);
     let user_ctx_ptr: *const TrapContext = core::ptr::addr_of!(process.ctx);
     let entry = process.ctx.sepc;
+    drop(guard);
     drop(mgr);
     trace!("arch_relate::run_program entered");
     asm!(

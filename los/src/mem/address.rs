@@ -10,6 +10,8 @@ const VIRTUAL_ADDRESS_WIDTH_SV39: usize = 39;
 
 pub const PPN_WIDTH_SV39: usize = PHYSICAL_ADDRESS_WIDTH_SV39 - PAGE_SIZE_BITS;
 
+pub const VPN_WIDTH_SV39: usize = VIRTUAL_ADDRESS_WIDTH_SV39 - PAGE_SIZE_BITS;
+
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub(crate) struct PhyAddr(usize);
 
@@ -161,6 +163,13 @@ impl VirPageNum {
 impl From<VirAddr> for VirPageNum {
     fn from(value: VirAddr) -> Self {
         value.floor_to_vpn()
+    }
+}
+
+impl From<usize> for VirPageNum {
+    fn from(value: usize) -> Self {
+        assert_eq!(Self(value & ((1 << VPN_WIDTH_SV39) - 1)), VirAddr::from(value).floor_to_vpn(), "internal error");
+        Self(value & ((1 << VPN_WIDTH_SV39) - 1))
     }
 }
 

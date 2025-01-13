@@ -13,7 +13,7 @@
 // impl BootStack {
 //     const ZERO: Self = Self([0; SINGLE_STACK_SIZE]);
 // }
-use crate::batch::MAX_PROGRAM_NUM;
+// use crate::batch::MAX_PROGRAM_NUM;
 
 pub(crate) const KERNAL_STACK_SIZE: usize = 4096 * 2;
 
@@ -32,21 +32,21 @@ impl KernelStack {
 #[derive(Clone, Copy)]
 pub(crate) struct UserStack(pub(crate) [u8; USER_STACK_SIZE]);
 
-impl UserStack {
-    pub(crate) fn get_sp_top(&self) -> usize {
-        self.0.as_ptr() as usize + USER_STACK_SIZE
-    }
+// impl UserStack {
+//     pub(crate) fn get_sp_top(&self) -> usize {
+//         self.0.as_ptr() as usize + USER_STACK_SIZE
+//     }
 
-    #[allow(unused)]
-    pub(crate) fn new() -> Self {
-        Self([0; USER_STACK_SIZE])
-    }
-}
+//     #[allow(unused)]
+//     pub(crate) fn new() -> Self {
+//         Self([0; USER_STACK_SIZE])
+//     }
+// }
 
 #[link_section = ".bss.stack"]
 pub(crate) static KERNAL_STACK: KernelStack = KernelStack([0; KERNAL_STACK_SIZE]);
 
 pub(crate) static TRAP_STACK: KernelStack = KernelStack([0; KERNAL_STACK_SIZE]);
 
-pub(crate) static USER_STACK: [UserStack; MAX_PROGRAM_NUM] =
-    [UserStack([0; USER_STACK_SIZE]); MAX_PROGRAM_NUM];
+// pub(crate) static USER_STACK: [UserStack; MAX_PROGRAM_NUM] =
+    // [UserStack([0; USER_STACK_SIZE]); MAX_PROGRAM_NUM];

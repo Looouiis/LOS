@@ -94,6 +94,7 @@ impl Deref for LockedStackFrameAllocator {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct FrameTracker {
     pub(crate) ppn: PhyPageNum
 }

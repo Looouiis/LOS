@@ -2,22 +2,23 @@ use core::{
     cell::{RefCell, RefMut},
     cmp::min,
 };
+use alloc::collections::linked_list::LinkedList;
 use lazy_static::lazy_static;
+use spin::mutex::Mutex;
 
 use crate::{
     arch_relate::{
         self,
         timer::set_nxt_trigger,
         trap::{trap_restore, TrapContext},
-    },
-    stack::USER_STACK,
+    }, config::TRAP_CONTEXT, mem::{address::PhyPageNum, memory_set::{MapPermission, MemorySet, KERNEL_SPACE}}, stack::USER_STACK_SIZE
 };
 
 extern "C" {
     fn _num_program();
 }
 
-pub(crate) const MAX_PROGRAM_NUM: usize = 20;
+// pub(crate) const MAX_PROGRAM_NUM: usize = 20;
 
 pub(crate) enum RestoreBehavior {
     DirectReturn(usize),
@@ -29,27 +30,27 @@ lazy_static! {
         ArcCell::new({
             let ptr = _num_program as usize as *const usize;
             let program_num = ptr.read_volatile();
-            let process: [Process; MAX_PROGRAM_NUM + 1] = [Process {
-                // pc: 0,
-                // start: 0,
-                // len: 0,
-                status: State::Exited,
-                stack: None,
-                ctx: TrapContext::new(),
-            }; MAX_PROGRAM_NUM + 1];
+            // let process: [Process; MAX_PROGRAM_NUM + 1] = [Process {
+            //     // pc: 0,
+            //     // start: 0,
+            //     // len: 0,
+            //     status: State::Exited,
+            //     stack: None,
+            //     ctx: TrapContext::new(),
+            // }; MAX_PROGRAM_NUM + 1];
             ProgramManager {
                 program_num,
-                current_program: 0,
-                process,
+                current_program: Mutex::new(None),
+                process: LinkedList::new(),
                 kernel_ctx: TrapContext::new(),
-                current_entry: ProgramManager::ENTRY,
+                // current_entry: ProgramManager::ENTRY,
             }
         })
     };
 }
 
-#[derive(Clone, Copy)]
 pub(crate) struct Process {
+    pub(crate) pid: usize,
     // pub(crate) start: usize,
     // pub(crate) pc: usize,
     // pub(crate) len: usize,
@@ -57,6 +58,9 @@ pub(crate) struct Process {
     // stack: Option<UserStack>,
     pub(crate) stack: Option<usize>,
     pub(crate) ctx: TrapContext,
+    pub(crate) memory_set: MemorySet,
+    pub(crate) trapctx_ppn: PhyPageNum,
+    pub(crate) base_size: usize
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -67,10 +71,10 @@ pub(crate) enum State {
 
 pub(crate) struct ProgramManager {
     program_num: usize,
-    current_program: usize,
-    process: [Process; MAX_PROGRAM_NUM + 1],
+    current_program: Mutex<Option<Process>>,
+    process: LinkedList<Process>,
     pub(crate) kernel_ctx: TrapContext,
-    current_entry: usize,
+    // current_entry: usize,
 }
 
 impl ProgramManager {
@@ -79,6 +83,30 @@ impl ProgramManager {
 
     pub fn print_info(&self) {
         log!("Program_num: {}", self.program_num);
+    }
+
+    pub(crate) fn init(&mut self) {
+        for i in 0 .. self.program_num {
+            let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(unsafe { self.get_program_elf_bytes(i) });
+            let mut ctx = TrapContext::new();
+            // !ctx.sepc在arch_relate中的run_program中确定
+            ctx.sepc = entry_point;
+            // ctx.info.sp = USER_STACK[i].get_sp_top();
+            ctx.info.sp = user_sp_top_va;
+            let trapctx_ppn = memory_set.page_table.vpn_to_pte(TRAP_CONTEXT.into()).unwrap().ppn();
+            let process = Process {
+                pid: i,
+                status: State::Ready,
+                stack: Some(i),
+                ctx,
+                memory_set,
+                trapctx_ppn,
+                base_size: user_sp_top_va,
+            };
+            self.process.push_back(process);
+        }
+        let first = self.process.pop_front();
+        *self.current_program.lock() = first;
     }
 
     unsafe fn get_program_elf_bytes(&mut self, id: usize) -> &'static [u8] {
@@ -104,8 +132,6 @@ impl ProgramManager {
         //     );
         //     fence!();
         // });
-        self.process[id].stack = Some(id);
-        self.process[id].ctx.info.sp = USER_STACK[id].get_sp_top();
         let ptr = _num_program as usize as *const usize;
         let program_start_ptr = core::slice::from_raw_parts(ptr.add(1), self.program_num + 1);
         assert!(id < self.program_num);
@@ -114,31 +140,41 @@ impl ProgramManager {
 
     // 将program_manager内部的指针转移指向下一个program
     fn nxt_program(&mut self) -> bool {
-        let mut index = 1;
-        while index <= self.program_num {
-            if self.process[(self.current_program + index) % self.program_num].status
-                == State::Ready
-            {
-                break;
-            }
-            index += 1;
-        }
-        if index == self.program_num + 1 {
-            log!("Execute complete");
-            false
-        } else {
-            self.current_program = (self.current_program + index) % self.program_num;
-            self.current_entry = Self::ENTRY + Self::LIMIT * self.current_program;
-            true
+        // let mut index = 1;
+        // while index <= self.program_num {
+        //     if self.process.get(&((self.current_program + index) % self.program_num)).unwrap().status
+        //         == State::Ready
+        //     {
+        //         break;
+        //     }
+        //     index += 1;
+        // }
+        // if index == self.program_num + 1 {
+        //     log!("Execute complete");
+        //     false
+        // } else {
+        //     self.current_program = (self.current_program + index) % self.program_num;
+        //     // self.current_entry = Self::ENTRY + Self::LIMIT * self.current_program;
+        //     true
+        // }
+        match self.process.pop_front() {
+            Some(p) => {
+                let mut guard = self.current_program.lock();
+                let cur_process = guard.take().unwrap();
+                self.process.push_back(cur_process);
+                *guard = Some(p);
+                true
+            },
+            None => false,
         }
     }
 
-    pub(crate) fn get_process(&self) -> &Process {
-        &self.process[self.current_program]
+    pub(crate) fn get_process(&self) -> &Mutex<Option<Process>> {
+        &self.current_program
     }
 
     pub(crate) fn exit_current(&mut self) {
-        self.process[self.current_program].status = State::Exited;
+        self.current_program.lock().as_mut().unwrap().status = State::Exited;
     }
 }
 
@@ -179,9 +215,6 @@ pub(crate) fn sys_yield() -> RestoreBehavior {
 }
 
 pub(crate) fn run_program() -> usize {
-    let mut mgr = PROGRAM_MANAGER.get();
-    unsafe { mgr.get_program_elf_bytes(1) };
-    drop(mgr);
     let mut entered_num = 0;
     loop {
         unsafe {
@@ -216,7 +249,7 @@ pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> RestoreBe
         if min_len < len {
             name.add(min_len).write_volatile(b'\0');
         }
-        id.write_volatile(mgr.current_program);
+        id.write_volatile(mgr.current_program.lock().as_ref().unwrap().pid);
     };
     RestoreBehavior::DirectReturn(min_len)
 }

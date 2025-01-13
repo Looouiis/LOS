@@ -5,7 +5,7 @@ fn main() {
     fs::write(linker, LINK_SCRIPT).unwrap();
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=LOG");
-    println!("cargo:rustc-link-arg=-T{}", "user/src/linker.ld");
+    println!("cargo:rustc-link-arg=-T{}", linker.display());
 }
 
 const LINK_SCRIPT: &[u8] = b"
@@ -29,12 +29,13 @@ SECTIONS
     .data : {
         *(.data .data.*)
     }
+    __bss_start = .;
     .bss : {
         *(.bss .bss.*)
     }
+    __bss_end = .;
     /DISCARD/ : {
         *(.eh_frame)
         *(.debug*)
     }
-}
 }";

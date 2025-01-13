@@ -65,6 +65,7 @@ impl PageTableEntry {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct PageTable {
     root_ppn: PhyPageNum,
     frames: Vec<FrameTracker>
