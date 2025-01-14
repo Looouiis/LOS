@@ -212,6 +212,7 @@ impl MemorySet {
         // 在各段和栈底之间插入空白的守护页面
         user_stack_btm_va += PAGE_SIZE;
         let user_stack_top_va = user_stack_btm_va + USER_STACK_SIZE;
+        println!("sp_top: {:#x}", user_stack_top_va);
         memory_set.push_area(MapArea::new(user_stack_btm_va.into(), user_stack_top_va.into(), MapType::Framed, MapPermission::R | MapPermission::W | MapPermission::U), None);
         memory_set.push_area(MapArea::new(TRAP_CONTEXT.into(), TRAMPOLINE.into(), MapType::Framed, MapPermission::R | MapPermission::W), None);
         (memory_set, user_stack_top_va, elf.header.pt2.entry_point() as usize)

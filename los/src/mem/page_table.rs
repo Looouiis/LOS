@@ -37,7 +37,7 @@ impl PageTableEntry {
     }
 
     pub(crate) fn ppn(&self) -> PhyPageNum {
-        PhyPageNum(self.bits >> 10 & ((1usize << 44) - 1))
+        PhyPageNum::from(self.bits >> 10 & ((1usize << 44) - 1))
     }
 
     pub(crate) fn flags(&self) -> PTEFlags {

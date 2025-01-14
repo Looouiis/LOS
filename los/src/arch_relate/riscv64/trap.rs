@@ -2,7 +2,9 @@ use core::arch::asm;
 
 use riscv::register::sstatus::Sstatus;
 
-use crate::stack::{KERNAL_STACK_SIZE, TRAP_STACK};
+use crate::{arch_relate::to_satp, config::{TRAMPOLINE, TRAP_CONTEXT}, mem::memory_set::KERNEL_SPACE, stack::{KERNAL_STACK_SIZE, TRAP_STACK}};
+
+use super::PROGRAM_MANAGER;
 
 #[cfg(target_pointer_width = "32")]
 #[macro_use]
@@ -70,19 +72,19 @@ mod arch {
     }
 }
 
-#[no_mangle]
-pub(crate) unsafe extern "C" fn trap_vec() {
-    asm!(
-        "   .align 4
-            .option push
-            .option norvc
-            j {handler}
-            .option pop
-        ",
-        handler = sym trap_handler,
-        options(noreturn)
-    )
-}
+// #[no_mangle]
+// pub(crate) unsafe extern "C" fn trap_vec() {
+//     asm!(
+//         "   .align 4
+//             .option push
+//             .option norvc
+//             j {handler}
+//             .option pop
+//         ",
+//         handler = sym trap_handler,
+//         options(noreturn)
+//     )
+// }
 
 #[no_mangle]
 #[link_section = ".text.trampoline"]
@@ -128,13 +130,13 @@ pub(crate) unsafe extern "C" fn trap_handler() {
         save!(t2 => sp[2]),
         load!(sp[34] => t0),
         load!(sp[36] => t1),
-        // load!(sp[35] => sp),
+        load!(sp[35] => sp),
         "   csrw satp, t0
-            mv a0, sp
-            la sp, {stack_btn}
-            li t0, {stack_size}
-            add sp, sp, t0
             sfence.vma
+            // mv a0, sp
+            // la sp, {stack_btn}
+            // li t0, {stack_size}
+            // add sp, sp, t0
             jr t1           // jump to syscall_service
         ",
         stack_btn = sym TRAP_STACK,
@@ -143,11 +145,40 @@ pub(crate) unsafe extern "C" fn trap_handler() {
     );
 }
 
+#[inline]
+pub(crate) fn get_restore_va() -> usize {
+    trap_restore as usize - trap_handler as usize + TRAMPOLINE
+}
+
+pub(crate) fn trap_return(is_kernel: bool) -> ! {
+    let trap_cx_ptr;
+    let satp;
+    if is_kernel {
+        trap_cx_ptr = core::ptr::addr_of!(PROGRAM_MANAGER.get().kernel_ctx) as usize;
+        satp = to_satp(KERNEL_SPACE.get().page_table.address());
+    } else {
+        trap_cx_ptr = TRAP_CONTEXT;
+        satp = PROGRAM_MANAGER.get().get_current_satp();
+    }
+    let restore_va = get_restore_va();
+    unsafe {
+        asm!(
+            "   fence.i
+                jr {restore_va}
+            ",
+            restore_va = in(reg) restore_va,
+            in("a0") trap_cx_ptr,
+            in("a1") satp,
+            options(noreturn)
+        )
+    }
+}
+
 #[no_mangle]
 #[link_section = ".text.trampoline"]
-pub(crate) unsafe extern "C" fn trap_restore(ctx: &mut TrapContext) -> ! {
+unsafe extern "C" fn trap_restore() -> ! {
     asm!(
-        "   csrw satp, a1,
+        "   csrw satp, a1
             sfence.vma
             mv sp, a0",
         load!(sp[32] => t0),
@@ -190,7 +221,6 @@ pub(crate) unsafe extern "C" fn trap_restore(ctx: &mut TrapContext) -> ! {
             csrrw  sp, sscratch, sp
             sret
         ",
-        in ("a0") ctx,
         options(noreturn)
     );
 }

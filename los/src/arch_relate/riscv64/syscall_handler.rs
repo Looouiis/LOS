@@ -1,6 +1,5 @@
 use crate::{
-    batch::{exit, reschedule},
-    syscall::syscall,
+    arch_relate::trap::trap_return, batch::{exit, reschedule, restore_to_kernel}, syscall::syscall
 };
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
@@ -8,12 +7,12 @@ use riscv::register::{
 };
 
 use super::{
-    timer::set_nxt_trigger,
-    trap::{trap_restore, TrapContext},
+    timer::set_nxt_trigger, PROGRAM_MANAGER,
 };
 
 #[no_mangle]
-pub fn syscall_service(mut ctx: TrapContext) {
+pub fn syscall_service() {
+    let ctx = PROGRAM_MANAGER.get().get_current_trap_context();
     match scause::read().cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             ctx.ret_at_nxt();
@@ -23,9 +22,7 @@ pub fn syscall_service(mut ctx: TrapContext) {
             ) {
                 crate::batch::RestoreBehavior::DirectReturn(res) => {
                     ctx.set_syscall_res(res);
-                    unsafe {
-                        trap_restore(&mut ctx);
-                    };
+                    trap_return(false);
                 }
                 crate::batch::RestoreBehavior::Reschedule => {
                     reschedule();
@@ -44,6 +41,7 @@ pub fn syscall_service(mut ctx: TrapContext) {
             if sstatus::read().spp() == sstatus::SPP::Supervisor {
                 crate::temp_test::trigger_kernel_interrupt();
                 set_nxt_trigger();
+                restore_to_kernel();
             } else if Interrupt::SupervisorTimer == i {
                 reschedule();
             } else {

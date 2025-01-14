@@ -23,6 +23,7 @@ mod mem;
 mod temp_test;
 
 use batch::{run_program, PROGRAM_MANAGER};
+use stack::{KERNAL_STACK_SIZE, TRAP_STACK};
 use temp_test::{frame_allocator_test, remap_test};
 use core::arch::global_asm;
 use power::shutdown;
@@ -60,13 +61,14 @@ fn rust_main() {
     println!();
     frame_allocator_test();
     remap_test();
+    println!("trap_top: {:#x}", core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE);
 
     // temp_test::test_kernel_interrupt();
 
     PROGRAM_MANAGER.get().print_info();
     PROGRAM_MANAGER.get().init();
-    // let num = run_program();
-    // log!("arch_relate::run_program entered {} times", num);
+    let num = run_program();
+    log!("arch_relate::run_program entered {} times", num);
     trace!("main trace");
     // HEAP_ALLOCATOR.check_leak();
     shutdown();

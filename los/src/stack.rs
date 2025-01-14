@@ -46,6 +46,7 @@ pub(crate) struct UserStack(pub(crate) [u8; USER_STACK_SIZE]);
 #[link_section = ".bss.stack"]
 pub(crate) static KERNAL_STACK: KernelStack = KernelStack([0; KERNAL_STACK_SIZE]);
 
+#[link_section = ".bss.stack"]
 pub(crate) static TRAP_STACK: KernelStack = KernelStack([0; KERNAL_STACK_SIZE]);
 
 // pub(crate) static USER_STACK: [UserStack; MAX_PROGRAM_NUM] =

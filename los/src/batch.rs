@@ -10,8 +10,8 @@ use crate::{
     arch_relate::{
         self,
         timer::set_nxt_trigger,
-        trap::{trap_restore, TrapContext},
-    }, config::TRAP_CONTEXT, mem::{address::PhyPageNum, memory_set::{MapPermission, MemorySet, KERNEL_SPACE}}, stack::USER_STACK_SIZE
+        trap::{trap_return, TrapContext},
+    }, config::TRAP_CONTEXT, mem::{address::{PhyPageNum, VirAddr}, memory_set::{MemorySet, KERNEL_SPACE}}, stack::{KERNAL_STACK_SIZE, TRAP_STACK}
 };
 
 extern "C" {
@@ -57,10 +57,20 @@ pub(crate) struct Process {
     pub(crate) status: State,
     // stack: Option<UserStack>,
     pub(crate) stack: Option<usize>,
-    pub(crate) ctx: TrapContext,
+    // pub(crate) ctx: TrapContext,
     pub(crate) memory_set: MemorySet,
     pub(crate) trapctx_ppn: PhyPageNum,
     pub(crate) base_size: usize
+}
+
+impl Process {
+    pub(crate) fn get_trap_context(&self) -> &'static mut TrapContext {
+        self.trapctx_ppn.get_mut_data_at_start()
+    }
+
+    pub(crate) fn get_satp(&self) -> usize {
+        arch_relate::to_satp(self.memory_set.page_table.address())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -86,19 +96,25 @@ impl ProgramManager {
     }
 
     pub(crate) fn init(&mut self) {
+        extern "C" {
+            fn __trampoline_start();
+        }
+        let kernel_satp = arch_relate::to_satp(KERNEL_SPACE.get().page_table.address());
         for i in 0 .. self.program_num {
             let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(unsafe { self.get_program_elf_bytes(i) });
-            let mut ctx = TrapContext::new();
+            let trapctx_ppn = memory_set.page_table.vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn()).unwrap().ppn();
+            let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
             // !ctx.sepc在arch_relate中的run_program中确定
             ctx.sepc = entry_point;
             // ctx.info.sp = USER_STACK[i].get_sp_top();
             ctx.info.sp = user_sp_top_va;
-            let trapctx_ppn = memory_set.page_table.vpn_to_pte(TRAP_CONTEXT.into()).unwrap().ppn();
+            ctx.kernel_satp = kernel_satp;
+            ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
+            ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
             let process = Process {
                 pid: i,
                 status: State::Ready,
                 stack: Some(i),
-                ctx,
                 memory_set,
                 trapctx_ppn,
                 base_size: user_sp_top_va,
@@ -160,8 +176,12 @@ impl ProgramManager {
         match self.process.pop_front() {
             Some(p) => {
                 let mut guard = self.current_program.lock();
-                let cur_process = guard.take().unwrap();
-                self.process.push_back(cur_process);
+                match guard.take() {
+                    Some(cur_process) => {
+                        self.process.push_back(cur_process);
+                    },
+                    None => {},
+                }
                 *guard = Some(p);
                 true
             },
@@ -174,7 +194,17 @@ impl ProgramManager {
     }
 
     pub(crate) fn exit_current(&mut self) {
-        self.current_program.lock().as_mut().unwrap().status = State::Exited;
+        let mut exited = self.current_program.lock().take().unwrap();
+        exited.status = State::Exited;
+        drop(exited);
+    }
+
+    pub(crate) fn get_current_satp(&self) -> usize {
+        self.current_program.lock().as_ref().unwrap().get_satp()
+    }
+
+    pub(crate) fn get_current_trap_context(&self) -> &'static mut TrapContext {
+        self.current_program.lock().as_ref().unwrap().get_trap_context()
     }
 }
 
@@ -232,12 +262,7 @@ pub(crate) fn run_program() -> usize {
 
 #[inline]
 pub(crate) fn restore_to_kernel() -> ! {
-    let mut mgr = PROGRAM_MANAGER.get();
-    let ctx_ptr = core::ptr::addr_of_mut!(mgr.kernel_ctx);
-    drop(mgr);
-    unsafe {
-        trap_restore(&mut (*ctx_ptr));
-    };
+    trap_return(true);
 }
 
 pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> RestoreBehavior {

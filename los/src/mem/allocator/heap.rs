@@ -130,7 +130,7 @@ impl Heap {
                 buddy = final_ptr as usize - block_size;
             }
             if self.usize_list[i].find_and_pop_buddy(buddy) {
-                trace!("mergerd");
+                // trace!("mergerd");
                 if !flag {
                     final_ptr = buddy as *mut u8;
                 }

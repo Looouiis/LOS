@@ -63,6 +63,10 @@ impl VirAddr {
             VirPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
         }
     }
+
+    pub(crate) fn page_offset(&self) -> usize {
+        self.0 & (PAGE_SIZE - 1)
+    }
 }
 
 impl From<usize> for VirAddr {
@@ -168,7 +172,6 @@ impl From<VirAddr> for VirPageNum {
 
 impl From<usize> for VirPageNum {
     fn from(value: usize) -> Self {
-        assert_eq!(Self(value & ((1 << VPN_WIDTH_SV39) - 1)), VirAddr::from(value).floor_to_vpn(), "internal error");
         Self(value & ((1 << VPN_WIDTH_SV39) - 1))
     }
 }

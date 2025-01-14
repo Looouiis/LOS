@@ -57,13 +57,13 @@ pub fn frame_allocator_test() {
     let mut v: Vec<FrameTracker> = Vec::new();
     for _i in 0..5 {
         let frame = FRAME_ALLOCATOR.alloc().unwrap();
-        println!("{:?}", frame.ppn.0);
+        println!("ppn: {:#x}", frame.ppn.0);
         v.push(frame);
     }
     v.clear();
     for _i in 0..5 {
         let frame = FRAME_ALLOCATOR.alloc().unwrap();
-        println!("{:?}", frame.ppn.0);
+        println!("ppn: {:#x}", frame.ppn.0);
         v.push(frame);
     }
     drop(v);
