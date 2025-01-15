@@ -6,7 +6,7 @@ use os_xtask_utils::{BinUtil, Cargo, CommandExt, Qemu};
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::{self, Command},
+    process,
     sync::OnceLock,
 };
 
@@ -55,10 +55,6 @@ impl BuildArgs {
             }
             None => "riscv64gc-unknown-none-elf",
         };
-        // Command::new("python")
-        //     .arg("./user/build.py")
-        //     .status()
-        //     .unwrap();
         Cargo::build()
             .package("user")
             .release()

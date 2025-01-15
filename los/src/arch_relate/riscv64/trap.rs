@@ -2,7 +2,12 @@ use core::arch::asm;
 
 use riscv::register::sstatus::Sstatus;
 
-use crate::{arch_relate::to_satp, config::{TRAMPOLINE, TRAP_CONTEXT}, mem::memory_set::KERNEL_SPACE, stack::{KERNAL_STACK_SIZE, TRAP_STACK}};
+use crate::{
+    arch_relate::to_token,
+    config::{TRAMPOLINE, TRAP_CONTEXT},
+    mem::memory_set::KERNEL_SPACE,
+    stack::{KERNAL_STACK_SIZE, TRAP_STACK},
+};
 
 use super::PROGRAM_MANAGER;
 
@@ -155,10 +160,10 @@ pub(crate) fn trap_return(is_kernel: bool) -> ! {
     let satp;
     if is_kernel {
         trap_cx_ptr = core::ptr::addr_of!(PROGRAM_MANAGER.get().kernel_ctx) as usize;
-        satp = to_satp(KERNEL_SPACE.get().page_table.address());
+        satp = to_token(KERNEL_SPACE.get().page_table.address());
     } else {
         trap_cx_ptr = TRAP_CONTEXT;
-        satp = PROGRAM_MANAGER.get().get_current_satp();
+        satp = PROGRAM_MANAGER.get().get_current_token();
     }
     let restore_va = get_restore_va();
     unsafe {
@@ -238,7 +243,7 @@ pub struct TrapContext {
     // 35
     pub kernel_sp: usize,
     // 36
-    pub trap_handler: usize
+    pub trap_handler: usize,
 }
 
 impl TrapContext {
@@ -249,7 +254,7 @@ impl TrapContext {
             sepc: 0,
             kernel_satp: 0,
             kernel_sp: 0,
-            trap_handler: 0
+            trap_handler: 0,
         }
     }
 

@@ -1,7 +1,10 @@
-use alloc::vec::Vec;
 use alloc::vec;
+use alloc::vec::Vec;
 
-use super::{address::{PhyPageNum, VirPageNum}, allocator::{frame::FrameTracker, FRAME_ALLOCATOR}};
+use super::{
+    address::{PhyPageNum, VirPageNum},
+    allocator::{frame::FrameTracker, FRAME_ALLOCATOR},
+};
 
 bitflags! {
     #[derive(PartialEq)]
@@ -26,14 +29,12 @@ pub(crate) struct PageTableEntry {
 impl PageTableEntry {
     pub(crate) fn new(ppn: PhyPageNum, flags: PTEFlags) -> Self {
         Self {
-            bits: ppn.0 << 10 | flags.bits() as usize
+            bits: ppn.0 << 10 | flags.bits() as usize,
         }
     }
 
     pub(crate) fn empty() -> Self {
-        Self {
-            bits: 0
-        }
+        Self { bits: 0 }
     }
 
     pub(crate) fn ppn(&self) -> PhyPageNum {
@@ -59,16 +60,47 @@ impl PageTableEntry {
     pub fn writable(&self) -> bool {
         (self.flags() & PTEFlags::W) != PTEFlags::empty()
     }
-    
+
     pub fn executable(&self) -> bool {
         (self.flags() & PTEFlags::X) != PTEFlags::empty()
     }
 }
 
-#[derive(Clone)]
+pub(crate) struct ROTable {
+    root_ppn: PhyPageNum,
+}
+
+impl ROTable {
+    pub(crate) fn from_token(token: usize) -> Self {
+        Self {
+            root_ppn: (token & ((1 << 44) - 1)).into(),
+        }
+    }
+
+    pub(crate) fn find_pte(&self, vpn: VirPageNum) -> Option<&mut PageTableEntry> {
+        let indexs = vpn.get_index();
+        let mut ppn = self.root_ppn;
+        for (i, item) in indexs.iter().enumerate() {
+            let pte = &mut ppn.get_pte_array()[*item];
+            if i == 2 {
+                return Some(pte);
+            }
+            if !pte.is_valid() {
+                return None;
+            }
+            ppn = pte.ppn()
+        }
+        None
+    }
+
+    pub(crate) fn vpn_to_pte(&self, vpn: VirPageNum) -> Option<PageTableEntry> {
+        self.find_pte(vpn).map(|pte| pte.clone())
+    }
+}
+
 pub(crate) struct PageTable {
     root_ppn: PhyPageNum,
-    frames: Vec<FrameTracker>
+    frames: Vec<FrameTracker>,
 }
 
 impl PageTable {
@@ -76,15 +108,7 @@ impl PageTable {
         let frame = FRAME_ALLOCATOR.alloc().unwrap();
         Self {
             root_ppn: frame.ppn,
-            frames: vec![frame]
-        }
-    }
-
-    // frames 字段为空，也即不实际控制任何资源
-    pub(crate) fn from_satp(satp: usize) -> Self {
-        Self {
-            root_ppn: (satp & ((1 << 44) - 1)).into(),
-            frames: Vec::new(),
+            frames: vec![frame],
         }
     }
 
@@ -93,8 +117,7 @@ impl PageTable {
     }
 
     pub(crate) fn vpn_to_pte(&self, vpn: VirPageNum) -> Option<PageTableEntry> {
-        self.find_pte(vpn)
-            .map(|pte| pte.clone())
+        self.find_pte(vpn).map(|pte| pte.clone())
     }
 
     pub(crate) fn find_pte_create(&mut self, vpn: VirPageNum) -> Option<&mut PageTableEntry> {
@@ -137,19 +160,19 @@ impl PageTable {
             Some(pte) => {
                 assert!(!pte.is_valid(), "{vpn:?} has already mapped");
                 *pte = PageTableEntry::new(ppn, flags | PTEFlags::V);
-            },
+            }
             None => panic!("Failed to create pte"),
         }
     }
 
     pub(crate) fn remove_reflect(&self, vpn: VirPageNum) {
-        match  self.find_pte(vpn) {
+        match self.find_pte(vpn) {
             Some(pte) => {
                 assert!(pte.is_valid(), "{vpn:?} has not been mapped yet");
                 // *pte = PageTableEntry::empty();
                 pte.clear_valid();
                 assert!(!pte.is_valid(), "internal error for pte.clear_valid()");
-            },
+            }
             None => panic!("This Page Table item hasn't been create yet"),
         }
     }

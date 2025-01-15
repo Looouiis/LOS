@@ -58,8 +58,7 @@ impl VirAddr {
     pub(crate) fn ceil_to_vpn(&self) -> VirPageNum {
         if self.0 == 0 {
             VirPageNum(0)
-        }
-        else {
+        } else {
             VirPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
         }
     }
@@ -83,10 +82,10 @@ impl From<VirPageNum> for VirAddr {
 
 impl From<VirAddr> for usize {
     fn from(value: VirAddr) -> Self {
-        if value.0 >= (1 << (VIRTUAL_ADDRESS_WIDTH_SV39 - 1)) {     // 高256GB情况：将高位置一
+        if value.0 >= (1 << (VIRTUAL_ADDRESS_WIDTH_SV39 - 1)) {
+            // 高256GB情况：将高位置一
             value.0 | (!((1 << VIRTUAL_ADDRESS_WIDTH_SV39) - 1))
-        }
-        else {
+        } else {
             value.0
         }
     }
@@ -103,29 +102,23 @@ pub(crate) struct PhyPageNum(pub(crate) usize);
 
 // "开启之后，虽然裸指针被视为一个虚拟地址，但是上面已经提到，基于恒等映射，虚拟地址会映射到一个相同的物理地址，因此在也是成立的"
 impl<'a> PhyPageNum {
-    pub(crate) const fn empty() -> Self {
-        Self(0)
-    }
+    // pub(crate) const fn empty() -> Self {
+    //     Self(0)
+    // }
 
     pub(crate) fn get_pte_array(&self) -> &'a mut [PageTableEntry] {
         let pa: PhyAddr = (*self).into();
-        unsafe {
-            core::slice::from_raw_parts_mut(pa.0 as *mut PageTableEntry, 512)
-        }
+        unsafe { core::slice::from_raw_parts_mut(pa.0 as *mut PageTableEntry, 512) }
     }
 
     pub(crate) fn get_bytes_array(&self) -> &'a mut [u8] {
         let pa: PhyAddr = (*self).into();
-        unsafe {
-            core::slice::from_raw_parts_mut(pa.0 as *mut u8, 4096)
-        }
+        unsafe { core::slice::from_raw_parts_mut(pa.0 as *mut u8, 4096) }
     }
 
     pub(crate) fn get_mut_data_at_start<T>(&self) -> &'a mut T {
         let pa: PhyAddr = (*self).into();
-        unsafe {
-            (pa.0 as *mut T).as_mut().unwrap()
-        }
+        unsafe { (pa.0 as *mut T).as_mut().unwrap() }
     }
 }
 
@@ -148,6 +141,12 @@ impl From<PhyPageNum> for usize {
     }
 }
 
+impl Debug for PhyPageNum {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("ppn: {:#x}", self.0))
+    }
+}
+
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub(crate) struct VirPageNum(pub(crate) usize);
 
@@ -156,7 +155,7 @@ impl VirPageNum {
     pub(crate) fn get_index(&self) -> [usize; 3] {
         let mut idx = [0; 3];
         let mut vpn = self.0;
-        for i in (0 .. 3).rev() {
+        for i in (0..3).rev() {
             idx[i] = vpn & ((1 << 9) - 1);
             vpn >>= 9;
         }
@@ -194,21 +193,20 @@ impl StepByOne for VirPageNum {
 
 #[derive(Copy, Clone)]
 pub(crate) struct SimpleRange<T>
-where T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug
+where
+    T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug,
 {
     start: T,
     end: T,
 }
 
 impl<T> SimpleRange<T>
-where T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug
+where
+    T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug,
 {
     pub(crate) fn new(start: T, end: T) -> Self {
         assert!(start <= end, "start {:?} > end {:?}!", start, end);
-        Self {
-            start,
-            end
-        }
+        Self { start, end }
     }
 
     pub(crate) fn get_start(&self) -> T {
@@ -221,7 +219,8 @@ where T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug
 }
 
 impl<T> IntoIterator for SimpleRange<T>
-where T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug
+where
+    T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug,
 {
     type Item = T;
 
@@ -233,25 +232,25 @@ where T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug
 }
 
 pub(crate) struct SimpleRangeIterator<T>
-where T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug
+where
+    T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug,
 {
     current: T,
-    end: T
+    end: T,
 }
 
 impl<T> SimpleRangeIterator<T>
-where T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug
+where
+    T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug,
 {
     fn new(current: T, end: T) -> Self {
-        Self {
-            current,
-            end
-        }
+        Self { current, end }
     }
 }
 
 impl<T> Iterator for SimpleRangeIterator<T>
-where T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug
+where
+    T: StepByOne + Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Debug,
 {
     type Item = T;
 

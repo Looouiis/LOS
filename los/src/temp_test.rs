@@ -2,7 +2,14 @@
 
 use alloc::vec::Vec;
 
-use crate::{arch_relate, mem::{address::VirAddr, allocator::{frame::FrameTracker, FRAME_ALLOCATOR}, memory_set::KERNEL_SPACE}};
+use crate::{
+    arch_relate,
+    mem::{
+        address::VirAddr,
+        allocator::{frame::FrameTracker, FRAME_ALLOCATOR},
+        memory_set::KERNEL_SPACE,
+    },
+};
 
 static mut KERNEL_INTERRUPT_TRIGGERED: bool = false;
 
@@ -33,10 +40,10 @@ pub fn heap_test() {
     use alloc::boxed::Box;
     use alloc::vec::Vec;
     extern "C" {
-        fn __rodata_start();
-        fn __rodata_end();
+        fn __data_start();
+        fn __data_end();
     }
-    let bss_range = __rodata_start as usize..__rodata_end as usize;
+    let bss_range = __data_start as usize..__data_end as usize;
     let a = Box::new(5);
     assert_eq!(*a, 5);
     assert!(bss_range.contains(&(a.as_ref() as *const _ as usize)));
@@ -57,15 +64,17 @@ pub fn frame_allocator_test() {
     let mut v: Vec<FrameTracker> = Vec::new();
     for _i in 0..5 {
         let frame = FRAME_ALLOCATOR.alloc().unwrap();
-        println!("ppn: {:#x}", frame.ppn.0);
         v.push(frame);
     }
+    let first: Vec<usize> = v.iter().map(|frame| frame.ppn.into()).collect();
     v.clear();
     for _i in 0..5 {
         let frame = FRAME_ALLOCATOR.alloc().unwrap();
-        println!("ppn: {:#x}", frame.ppn.0);
         v.push(frame);
     }
+    let mut second: Vec<usize> = v.iter().map(|frame| frame.ppn.into()).collect();
+    second.reverse();
+    assert_eq!(first, second);
     drop(v);
     println!("frame_allocator_test passed!");
 }
@@ -87,15 +96,27 @@ pub fn remap_test() {
     let mid_rodata: VirAddr = ((__rodata_start as usize + __rodata_end as usize) / 2).into();
     let mid_data: VirAddr = ((__data_start as usize + __data_end as usize) / 2).into();
     assert_eq!(
-        kernel_space.page_table.vpn_to_pte(mid_text.floor_to_vpn()).unwrap().writable(),
+        kernel_space
+            .page_table
+            .vpn_to_pte(mid_text.floor_to_vpn())
+            .unwrap()
+            .writable(),
         false
     );
     assert_eq!(
-        kernel_space.page_table.vpn_to_pte(mid_rodata.floor_to_vpn()).unwrap().writable(),
+        kernel_space
+            .page_table
+            .vpn_to_pte(mid_rodata.floor_to_vpn())
+            .unwrap()
+            .writable(),
         false,
     );
     assert_eq!(
-        kernel_space.page_table.vpn_to_pte(mid_data.floor_to_vpn()).unwrap().executable(),
+        kernel_space
+            .page_table
+            .vpn_to_pte(mid_data.floor_to_vpn())
+            .unwrap()
+            .executable(),
         false,
     );
     println!("remap_test passed!");

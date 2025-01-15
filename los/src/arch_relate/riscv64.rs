@@ -1,8 +1,13 @@
 use core::arch::asm;
 use riscv::register::sstatus;
-use trap::{get_restore_va, TrapContext};
+use trap::get_restore_va;
 
-use crate::{batch::PROGRAM_MANAGER, config::{TRAMPOLINE, TRAP_CONTEXT}, stack};
+use crate::{
+    arch_relate,
+    batch::PROGRAM_MANAGER,
+    config::{TRAMPOLINE, TRAP_CONTEXT},
+    stack,
+};
 
 #[macro_use]
 pub(crate) mod trap;
@@ -19,14 +24,13 @@ unsafe extern "C" fn _start() -> ! {
         "   la      sp, {stack_btn}
             li      t0, {stack_size}
             add     sp, sp, t0
-            la      t0, {trap_vec}
+            la      t0, {trap_handler}
             csrw    stvec, t0
             j       rust_main
         ",
         stack_btn = sym KERNAL_STACK,
         stack_size = const KERNAL_STACK_SIZE,
-        // trap_vec = sym trap::trap_vec
-        trap_vec = const TRAMPOLINE
+        trap_handler = const TRAMPOLINE
     );
     loop {}
 }
@@ -45,17 +49,15 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
     let mgr = PROGRAM_MANAGER.get();
     let guard = mgr.get_process().lock();
     let satp = match guard.as_ref() {
-        Some(process) => process.get_satp(),
+        Some(process) => process.get_token(),
         None => return,
     };
     let kernel_ctx_ptr = core::ptr::addr_of!(mgr.kernel_ctx);
-    // let ctx = process.get_trap_context();
-    // let entry = ctx.sepc;
-    // let satp = process.get_satp();
     let restore_va = get_restore_va();
     drop(guard);
     drop(mgr);
     trace!("arch_relate::run_program entered");
+    arch_relate::timer::set_nxt_trigger();
     asm!(
         // save!(x1 => a3[1]),
         save!(x2 => a3[2]),
@@ -91,7 +93,7 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
             csrw sepc, t0
             csrw sscratch, a0
             la t2, 0f
-            addi t2, t2, 4
+            addi t2, t2, 2
         ",
         save!(t2 => a3[33]),
         save!(t3 => a3[32]),
@@ -102,44 +104,7 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
             fence.i
         0:
             jr {restore_va}
-
-            // csrw satp, t1
-            // sfence.vma",
-        // // load!(a0[1] => x1),
-        // load!(a0[2] => x2),
-        // // load!(a0[3] => x3),
-        // // load!(a0[5] => x5),
-        // // load!(a0[6] => x6),
-        // // load!(a0[7] => x7),
-        // load!(a0[8] => x8),
-        // load!(a0[9] => x9),
-        // // load!(a0[10] => x10),
-        // // load!(a0[11] => x11),
-        // // load!(a0[13] => x13),
-        // // load!(a0[14] => x14),
-        // // load!(a0[15] => x15),
-        // // load!(a0[16] => x16),
-        // // load!(a0[17] => x17),
-        // load!(a0[18] => x18),
-        // load!(a0[19] => x19),
-        // load!(a0[20] => x20),
-        // load!(a0[21] => x21),
-        // load!(a0[22] => x22),
-        // load!(a0[23] => x23),
-        // load!(a0[24] => x24),
-        // load!(a0[25] => x25),
-        // load!(a0[26] => x26),
-        // load!(a0[27] => x27),
-        // // load!(a0[28] => x28),
-        // // load!(a0[29] => x29),
-        // // load!(a0[30] => x30),
-        // // load!(a0[31] => x31),
-        // // load!(a0[12] => x12),
-        "0:
-            sret
-            ",
-
-        // in("t0") entry,
+        ",
         in("a0") TRAP_CONTEXT,
         in("a3") kernel_ctx_ptr,
         in("a1") satp,
@@ -157,16 +122,14 @@ pub(crate) fn disable_kernel_interrupt() {
 }
 
 #[inline]
-pub(crate) fn to_satp(address: usize) -> usize {
+pub(crate) fn to_token(address: usize) -> usize {
     8usize << 60 | address
 }
 
 #[no_mangle]
 pub(crate) fn enable_virtual_address(root_page_address: usize) {
-    riscv::register::satp::write(to_satp(root_page_address));
-    unsafe {
-        asm!("sfence.vma")
-    }
+    riscv::register::satp::write(to_token(root_page_address));
+    unsafe { asm!("sfence.vma") }
 }
 
 #[allow(unused)]

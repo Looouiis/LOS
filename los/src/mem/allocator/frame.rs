@@ -15,7 +15,7 @@ pub(crate) trait FrameAllocator {
 pub(crate) struct StackFrameAllocator {
     current: usize,
     end: usize,
-    recycled: Vec<usize>
+    recycled: Vec<usize>,
 }
 
 impl StackFrameAllocator {
@@ -23,7 +23,7 @@ impl StackFrameAllocator {
         Self {
             current: 0,
             end: 0,
-            recycled: Vec::new()
+            recycled: Vec::new(),
         }
     }
 
@@ -37,14 +37,12 @@ impl FrameAllocator for StackFrameAllocator {
     fn alloc(&mut self) -> Option<PhyPageNum> {
         if let Some(frame) = self.recycled.pop() {
             Some(frame.into())
-        }
-        else {
+        } else {
             if self.current < self.end {
                 let res = self.current;
                 self.current += 1;
                 Some(res.into())
-            }
-            else {
+            } else {
                 None
             }
         }
@@ -52,39 +50,39 @@ impl FrameAllocator for StackFrameAllocator {
 
     fn dealloc(&mut self, ppn: PhyPageNum) {
         let ppn_num = ppn.0;
-        if ppn_num < self.current && self.recycled.iter().find(|item| {**item == ppn_num}).is_none() {
+        if ppn_num < self.current
+            && self
+                .recycled
+                .iter()
+                .find(|item| **item == ppn_num)
+                .is_none()
+        {
             self.recycled.push(ppn_num);
-        }
-        else {
+        } else {
             panic!("frame illegal");
         }
     }
 }
 
 pub(crate) struct LockedStackFrameAllocator {
-    inner: Mutex<StackFrameAllocator>
+    inner: Mutex<StackFrameAllocator>,
 }
 
 impl LockedStackFrameAllocator {
     pub(crate) const fn const_new() -> Self {
         Self {
-            inner: Mutex::new(StackFrameAllocator::const_new())
+            inner: Mutex::new(StackFrameAllocator::const_new()),
         }
     }
 
     pub(crate) fn alloc(&self) -> Option<FrameTracker> {
-        self.inner
-            .lock()
-            .alloc()
-            .map(FrameTracker::new)
-
+        self.inner.lock().alloc().map(FrameTracker::new)
     }
 
     fn dealloc(&self, ppn: PhyPageNum) {
-        self.inner
-            .lock()
-            .dealloc(ppn);
-    }}
+        self.inner.lock().dealloc(ppn);
+    }
+}
 
 impl Deref for LockedStackFrameAllocator {
     type Target = Mutex<StackFrameAllocator>;
@@ -94,9 +92,9 @@ impl Deref for LockedStackFrameAllocator {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FrameTracker {
-    pub(crate) ppn: PhyPageNum
+    pub(crate) ppn: PhyPageNum,
 }
 
 impl FrameTracker {
@@ -105,9 +103,7 @@ impl FrameTracker {
         for byte in bytes {
             *byte = 0;
         }
-        Self {
-            ppn
-        }
+        Self { ppn }
     }
 }
 

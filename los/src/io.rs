@@ -1,6 +1,13 @@
 use alloc::vec::Vec;
 
-use crate::{arch_relate::ecall::putch, batch::{RestoreBehavior, PROGRAM_MANAGER}, mem::{address::{StepByOne, VirAddr}, page_table::PageTable}};
+use crate::{
+    arch_relate::ecall::putch,
+    batch::{RestoreBehavior, PROGRAM_MANAGER},
+    mem::{
+        address::{StepByOne, VirAddr},
+        page_table::ROTable,
+    },
+};
 use core::fmt::Write;
 
 struct Stdout;
@@ -63,8 +70,8 @@ macro_rules! println {
 
 const STDOUT: usize = 1;
 
-pub(crate) fn translate_to_kernel_ppn(satp: usize, ptr: *const u8, len: usize) -> Vec<&'static [u8]> {
-    let page_table = PageTable::from_satp(satp);
+pub(crate) fn get_user_slice(satp: usize, ptr: *const u8, len: usize) -> Vec<&'static [u8]> {
+    let page_table = ROTable::from_token(satp);
     let mut start = ptr as usize;
     let end = start + len;
     let mut v = Vec::new();
@@ -75,10 +82,9 @@ pub(crate) fn translate_to_kernel_ppn(satp: usize, ptr: *const u8, len: usize) -
         vpn.step();
         let end_va = VirAddr::from(vpn).min(VirAddr::from(end));
         if end_va.page_offset() == 0 {
-            v.push(&ppn.get_bytes_array()[start_va.page_offset() ..]);
-        }
-        else {
-            v.push(&ppn.get_bytes_array()[start_va.page_offset() .. end_va.page_offset()]);
+            v.push(&ppn.get_bytes_array()[start_va.page_offset()..]);
+        } else {
+            v.push(&ppn.get_bytes_array()[start_va.page_offset()..end_va.page_offset()]);
         }
         start = end_va.into();
     }
@@ -88,13 +94,13 @@ pub(crate) fn translate_to_kernel_ppn(satp: usize, ptr: *const u8, len: usize) -
 pub(crate) fn linux_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehavior {
     match fd {
         STDOUT => {
-            let buffer = translate_to_kernel_ppn(PROGRAM_MANAGER.get().get_current_satp(), buf, len);
-            for slice in buffer {
-                let str = core::str::from_utf8(slice).unwrap();
+            let slice = get_user_slice(PROGRAM_MANAGER.get().get_current_token(), buf, len);
+            for s in slice {
+                let str = core::str::from_utf8(s).unwrap();
                 print!("{}", str);
             }
             RestoreBehavior::DirectReturn(len)
         }
-        _ => panic!("unsupported fd type: {}", fd),
+        _ => panic!("unsupported fd type: {}", STDOUT),
     }
 }

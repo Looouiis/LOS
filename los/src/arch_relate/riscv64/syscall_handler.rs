@@ -1,14 +1,14 @@
 use crate::{
-    arch_relate::trap::trap_return, batch::{exit, reschedule, restore_to_kernel}, syscall::syscall
+    arch_relate::trap::trap_return,
+    batch::{exit, reschedule, restore_to_kernel},
+    syscall::syscall,
 };
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
     sstatus,
 };
 
-use super::{
-    timer::set_nxt_trigger, PROGRAM_MANAGER,
-};
+use super::{timer::set_nxt_trigger, PROGRAM_MANAGER};
 
 #[no_mangle]
 pub fn syscall_service() {
