@@ -197,6 +197,7 @@ dependencies = [
  "riscv 0.11.1",
  "sbi-rt",
  "spin",
+ "syscall_spec",
  "xmas-elf",
 ]
 
@@ -372,6 +373,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "syscall_spec"
+version = "0.1.0"
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -382,6 +387,7 @@ name = "user"
 version = "0.1.0"
 dependencies = [
  "riscv 0.6.0",
+ "syscall_spec",
 ]
 
 [[package]]

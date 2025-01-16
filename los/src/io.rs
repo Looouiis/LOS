@@ -2,11 +2,11 @@ use alloc::vec::Vec;
 
 use crate::{
     arch_relate::ecall::putch,
-    batch::{RestoreBehavior, PROGRAM_MANAGER},
     mem::{
         address::{StepByOne, VirAddr},
         page_table::ROTable,
     },
+    process::{RestoreBehavior, PROGRAM_MANAGER},
 };
 use core::fmt::Write;
 

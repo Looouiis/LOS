@@ -3,7 +3,7 @@
 
 use core::{panic::PanicInfo, ptr};
 
-use syscall::{sys_exit, sys_task_info};
+use syscall::{sys_exit, sys_task_info, sys_waitpid};
 
 pub mod io;
 pub mod syscall;
@@ -80,4 +80,26 @@ pub fn sys_yield() -> usize {
 /// syscall ID：38
 pub fn get_task_info(id: &usize, name: &[u8], len: usize) -> usize {
     sys_task_info(ptr::addr_of!(*id), name.as_ptr(), len)
+}
+
+pub fn wait(exit_code: &mut i32) -> isize {
+    loop {
+        match sys_waitpid(-1, exit_code as *mut _) {
+            -2 => {
+                sys_yield();
+            }
+            exit_pid => return exit_pid,
+        }
+    }
+}
+
+pub fn waitpid(pid: usize, exit_code: &mut i32) -> isize {
+    loop {
+        match sys_waitpid(pid as isize, exit_code as *mut _) {
+            -2 => {
+                sys_yield();
+            }
+            exit_pid => return exit_pid,
+        }
+    }
 }

@@ -1,12 +1,12 @@
-use crate::{
-    batch::{exit, sys_yield, write_task, RestoreBehavior},
-    io::linux_write,
-};
+use syscall_spec::*;
 
-pub(crate) const SYSCALL_WIRTE: usize = 64;
-pub(crate) const SYSCALL_EXIT: usize = 93;
-pub(crate) const SYSCALL_YIELD: usize = 124;
-pub(crate) const GET_TASK_INFO: usize = 38;
+use crate::{
+    io::linux_write,
+    process::{
+        syscall_fn::{exit, sys_yield},
+        write_task, RestoreBehavior,
+    },
+};
 
 pub(crate) fn syscall(id: usize, args: [usize; 3]) -> RestoreBehavior {
     match id {

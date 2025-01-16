@@ -11,20 +11,20 @@ extern crate bitflags;
 mod io;
 #[macro_use]
 mod arch_relate;
-mod batch;
 mod config;
 mod mem;
 mod panic;
 mod power;
+mod process;
 mod stack;
 mod syscall;
 mod timer;
 
 mod temp_test;
 
-use batch::{run_program, PROGRAM_MANAGER};
 use core::arch::global_asm;
 use power::shutdown;
+use process::{run_program, PROGRAM_MANAGER};
 use temp_test::{frame_allocator_test, heap_test, remap_test};
 
 // 由于_start与架构相关，所以具体请移步arch_relate模块

@@ -3,9 +3,9 @@ use lazy_static::lazy_static;
 
 use crate::{
     arch_relate,
-    batch::ArcCell,
     config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT},
     mem::PhyAddr,
+    process::ArcCell,
     stack::USER_STACK_SIZE,
 };
 

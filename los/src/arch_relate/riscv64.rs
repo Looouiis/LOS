@@ -4,8 +4,8 @@ use trap::get_restore_va;
 
 use crate::{
     arch_relate,
-    batch::PROGRAM_MANAGER,
     config::{TRAMPOLINE, TRAP_CONTEXT},
+    process::PROGRAM_MANAGER,
     stack,
 };
 

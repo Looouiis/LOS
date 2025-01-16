@@ -20,6 +20,8 @@ use crate::{
     stack::{KERNAL_STACK_SIZE, TRAP_STACK},
 };
 
+pub(crate) mod syscall_fn;
+
 extern "C" {
     fn _num_program();
 }
@@ -194,21 +196,9 @@ impl<T> Drop for ArcCell<T> {
 }
 
 #[inline]
-pub(crate) fn exit(code: usize) -> ! {
-    log!("Program exit with {}", code);
-    PROGRAM_MANAGER.get().exit_current();
-    restore_to_kernel()
-}
-
-#[inline]
 pub(crate) fn reschedule() -> ! {
     set_nxt_trigger();
     restore_to_kernel()
-}
-
-#[inline]
-pub(crate) fn sys_yield() -> RestoreBehavior {
-    RestoreBehavior::Reschedule
 }
 
 pub(crate) fn run_program() -> usize {

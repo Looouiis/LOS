@@ -1,6 +1,6 @@
 use crate::{
     arch_relate::trap::trap_return,
-    batch::{exit, reschedule, restore_to_kernel},
+    process::{reschedule, restore_to_kernel, syscall_fn::exit},
     syscall::syscall,
 };
 use riscv::register::{
@@ -20,11 +20,11 @@ pub fn syscall_service() {
                 ctx.get_syscall_id(),
                 [ctx.get_args(0), ctx.get_args(1), ctx.get_args(2)],
             ) {
-                crate::batch::RestoreBehavior::DirectReturn(res) => {
+                crate::process::RestoreBehavior::DirectReturn(res) => {
                     ctx.set_syscall_res(res);
                     trap_return(false);
                 }
-                crate::batch::RestoreBehavior::Reschedule => {
+                crate::process::RestoreBehavior::Reschedule => {
                     reschedule();
                 }
             }

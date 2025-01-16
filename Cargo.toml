@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "los", "user",
+    "los", "syscall_spec", "user",
     "xtask",
 ]
 default-members = ["xtask"]

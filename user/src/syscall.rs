@@ -1,4 +1,5 @@
 use core::arch::asm;
+use syscall_spec::*;
 
 /// 功能：将内存中缓冲区中的数据写入文件。
 ///
@@ -16,11 +17,6 @@ use core::arch::asm;
 pub fn write(fd: usize, buf: &[u8]) {
     sys_write(fd, buf.as_ptr(), buf.len());
 }
-
-const SYSCALL_WIRTE: usize = 64;
-const SYSCALL_EXIT: usize = 93;
-const GET_TASK_INFO: usize = 38;
-const SYSCALL_YIELD: usize = 124;
 
 fn syscall(id: usize, args: [usize; 3]) -> usize {
     let mut ret;
@@ -96,4 +92,20 @@ pub fn sys_yield() -> usize {
 pub fn sys_task_info(id: *const usize, name: *const u8, len: usize) -> usize {
     syscall(GET_TASK_INFO, [id as usize, name as usize, len]) as usize
     // unreachable!()
+}
+
+/// 功能：当前进程等待一个子进程变为僵尸进程，回收其全部资源并收集其返回值。
+///
+/// 参数：
+///
+/// `pid`` 表示要等待的子进程的进程 ID，如果为 -1 的话表示等待任意一个子进程；
+///
+/// `exit_code`` 表示保存子进程返回值的地址，如果这个地址为 0 的话表示不必保存。
+///
+/// 返回值：如果要等待的子进程不存在则返回 -1；否则如果要等待的子进程均未结束则返回 -2；
+///         否则返回结束的子进程的进程 ID。
+///
+/// syscall ID：260
+pub fn sys_waitpid(pid: isize, exit_code: *mut i32) -> isize {
+    syscall(SYSCALL_WAIT_PID, [pid as usize, exit_code as usize, 0]) as isize
 }
