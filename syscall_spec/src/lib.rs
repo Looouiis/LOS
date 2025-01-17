@@ -6,4 +6,5 @@ pub const SYSCALL_YIELD: usize = 124;
 pub const SYSCALL_FORK: usize = 220;
 pub const SYSCALL_WAIT_PID: usize = 260;
 pub const SYSCALL_EXEC: usize = 221;
+pub const SYSCALL_READ: usize = 63;
 pub const GET_TASK_INFO: usize = 38;

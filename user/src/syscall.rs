@@ -100,7 +100,7 @@ pub fn sys_task_info(id: *const usize, name: *const u8, len: usize) -> usize {
 ///
 /// `pid`` 表示要等待的子进程的进程 ID，如果为 -1 的话表示等待任意一个子进程；
 ///
-/// `exit_code`` 表示保存子进程返回值的地址，如果这个地址为 0 的话表示不必保存。
+/// `exit_code` 表示保存子进程返回值的地址，如果这个地址为 0 的话表示不必保存。
 ///
 /// 返回值：如果要等待的子进程不存在则返回 -1；否则如果要等待的子进程均未结束则返回 -2；
 ///         否则返回结束的子进程的进程 ID。
@@ -108,4 +108,35 @@ pub fn sys_task_info(id: *const usize, name: *const u8, len: usize) -> usize {
 /// syscall ID：260
 pub fn sys_waitpid(pid: isize, exit_code: *mut i32) -> isize {
     syscall(SYSCALL_WAIT_PID, [pid as usize, exit_code as usize, 0]) as isize
+}
+
+/// 功能：当前进程 fork 出来一个子进程。
+/// 
+/// 返回值：对于子进程返回 0，对于当前进程则返回子进程的 PID 。
+/// 
+/// syscall ID：220
+pub fn sys_fork() -> usize {
+    syscall(SYSCALL_FORK, [0, 0, 0])
+}
+
+/// 功能：将当前进程的地址空间清空并加载一个特定的可执行文件，返回用户态后开始它的执行。
+/// 
+/// 参数：`path` 给出了要加载的可执行文件的名字；
+/// 
+/// 返回值：如果出错的话（如找不到名字相符的可执行文件）则返回 -1，否则不应该返回。
+/// 
+/// syscall ID：221
+pub fn sys_exec(str: &str) -> usize {
+    syscall(SYSCALL_EXEC, [str.as_ptr() as usize, 0, 0])
+}
+
+/// 功能：从文件中读取一段内容到缓冲区。
+/// 
+/// 参数：fd 是待读取文件的文件描述符，切片 buffer 则给出缓冲区。
+/// 
+/// 返回值：如果出现了错误则返回 -1，否则返回实际读到的字节数。
+/// 
+/// syscall ID：63
+pub fn sys_read(fd: usize, buffer: &mut [u8]) -> isize {
+    syscall(SYSCALL_READ, [fd, buffer.as_ptr() as usize, buffer.len()]) as isize
 }

@@ -3,15 +3,22 @@
 
 use core::{panic::PanicInfo, ptr};
 
-use syscall::{sys_exit, sys_task_info, sys_waitpid};
+use allocator::{BuddyAllocator, HEAP, HEAP_SIZE};
+use syscall::{sys_exec, sys_exit, sys_fork, sys_task_info, sys_waitpid};
 
+#[macro_use]
 pub mod io;
 pub mod syscall;
+pub mod allocator;
+
+#[global_allocator]
+static HEAP_ALLOCATOR: BuddyAllocator = BuddyAllocator::uninit();
 
 #[no_mangle]
 #[link_section = ".text.entry"]
 fn _start() {
     clear_bss();
+    HEAP_ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE);
     exit(main() as usize);
 }
 
@@ -82,6 +89,16 @@ pub fn get_task_info(id: &usize, name: &[u8], len: usize) -> usize {
     sys_task_info(ptr::addr_of!(*id), name.as_ptr(), len)
 }
 
+/// 功能：当前进程等待一个子进程变为僵尸进程，回收其全部资源并收集其返回值。
+///
+/// 参数：
+///
+/// `exit_code` 表示保存子进程返回值的地址，如果这个地址为 0 的话表示不必保存。
+///
+/// 返回值：如果要等待的子进程不存在则返回 -1；否则如果要等待的子进程均未结束则返回 -2；
+///         否则返回结束的子进程的进程 ID。
+///
+/// syscall ID：260
 pub fn wait(exit_code: &mut i32) -> isize {
     loop {
         match sys_waitpid(-1, exit_code as *mut _) {
@@ -102,4 +119,12 @@ pub fn waitpid(pid: usize, exit_code: &mut i32) -> isize {
             exit_pid => return exit_pid,
         }
     }
+}
+
+pub fn fork() -> usize {
+    sys_fork()
+}
+
+pub fn exec(str: &str) -> usize {
+    sys_exec(str)
 }
