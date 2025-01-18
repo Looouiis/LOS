@@ -1,4 +1,7 @@
-use alloc::collections::linked_list::LinkedList;
+use alloc::{
+    collections::{btree_map::BTreeMap, linked_list::LinkedList},
+    string::String,
+};
 use core::{
     cell::{RefCell, RefMut},
     cmp::min,
@@ -24,6 +27,8 @@ pub(crate) mod syscall_fn;
 
 extern "C" {
     fn _num_program();
+    fn __trampoline_start();
+    fn _program_names();
 }
 
 // pub(crate) const MAX_PROGRAM_NUM: usize = 20;
@@ -43,6 +48,7 @@ lazy_static! {
                 current_program: Mutex::new(None),
                 process: LinkedList::new(),
                 kernel_ctx: TrapContext::new(),
+                name_map: BTreeMap::new(),
             }
         })
     };
@@ -76,6 +82,7 @@ pub(crate) struct ProgramManager {
     current_program: Mutex<Option<Process>>,
     process: LinkedList<Process>,
     pub(crate) kernel_ctx: TrapContext,
+    name_map: BTreeMap<String, usize>,
     // current_entry: usize,
 }
 
@@ -85,9 +92,28 @@ impl ProgramManager {
     }
 
     pub(crate) fn init(&mut self) {
-        extern "C" {
-            fn __trampoline_start();
+        // 读取名字
+        let mut name_ptr = _program_names as usize as *const u8;
+        unsafe {
+            // name_ptr = name_ptr.add(1);
         }
+        let mut str = String::new();
+        for i in 0..self.program_num {
+            unsafe {
+                let mut ch = name_ptr.read_volatile();
+                while ch != b'\0' {
+                    str.push(ch as char);
+                    name_ptr = name_ptr.add(1);
+                    ch = name_ptr.read_volatile();
+                }
+                name_ptr = name_ptr.add(1);
+            }
+            println!("{str}");
+            self.name_map.insert(str.clone(), i);
+            str.clear();
+        }
+        println!("{:?}", self.name_map);
+        // 进程相关
         let kernel_satp = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
         for i in 0..self.program_num {
             let (memory_set, user_sp_top_va, entry_point) =

@@ -4,7 +4,7 @@ use spin::Mutex;
 
 pub const HEAP_SIZE: usize = 0x30_0000;
 
-#[link_section = ".data"]
+#[link_section = ".bss"]
 pub(crate) static HEAP: [usize; HEAP_SIZE] = [0; HEAP_SIZE];
 
 pub struct BuddyAllocator {

@@ -21,3 +21,8 @@ program_0_end:
 program_1_start:
     .incbin "target/riscv64gc-unknown-none-elf/release/usershell"
 program_1_end:
+
+.global _program_names
+_program_names:
+    .string "initproc"
+    .string "usershell"

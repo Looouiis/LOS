@@ -65,8 +65,8 @@ fn rust_main() {
 
     PROGRAM_MANAGER.get().print_info();
     PROGRAM_MANAGER.get().init();
-    let num = run_program();
-    log!("arch_relate::run_program entered {} times", num);
+    // let num = run_program();
+    // log!("arch_relate::run_program entered {} times", num);
     trace!("main trace");
     shutdown();
     // loop {}

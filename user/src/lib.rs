@@ -8,10 +8,11 @@ use syscall::{sys_exec, sys_exit, sys_fork, sys_task_info, sys_waitpid};
 
 #[macro_use]
 pub mod io;
-pub mod syscall;
 pub mod allocator;
+pub mod syscall;
 
 #[global_allocator]
+#[link_section = ".data"]
 static HEAP_ALLOCATOR: BuddyAllocator = BuddyAllocator::uninit();
 
 #[no_mangle]
@@ -125,6 +126,6 @@ pub fn fork() -> usize {
     sys_fork()
 }
 
-pub fn exec(str: &str) -> usize {
+pub fn exec(str: &str) -> isize {
     sys_exec(str)
 }

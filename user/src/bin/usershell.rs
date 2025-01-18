@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use alloc::string::String;
-use user::{fork, io::get_char};
+use user::{exec, fork, io::get_char, waitpid};
 
 #[macro_use]
 extern crate user;
@@ -28,13 +28,30 @@ fn main() -> i32 {
                     line.push('\0');
                     let pid = fork();
                     if pid == 0 {
-
+                        if exec(line.as_str()) == -1 {
+                            println!("Cann't find process");
+                            return 0;
+                        }
+                    } else {
+                        let mut exit_code = 0;
+                        waitpid(pid, &mut exit_code);
+                        println!("Process exit with {exit_code}");
+                        println!();
+                        print!("> ");
+                        line.clear();
                     }
                 }
-            },
-            DL => {},
-            BS => {},
-            _ => {}
+            }
+            BS | DL => {
+                if !line.is_empty() {
+                    print!("{} {}", BS as char, BS as char);
+                    line.pop();
+                }
+            }
+            ch => {
+                print!("{}", ch as char);
+                line.push(ch as char);
+            }
         }
     }
 }

@@ -110,5 +110,16 @@ program_{0}_end:"#,
             idx, program, TARGET_PATH
         )?;
     }
+
+    writeln!(
+        f,
+        r#"
+.global _program_names
+_program_names:"#
+    )?;
+    for program in programs.iter() {
+        writeln!(f, r#"    .string "{}""#, program)?;
+    }
+
     Ok(())
 }
