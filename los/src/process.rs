@@ -1,10 +1,13 @@
 use alloc::{
     collections::{btree_map::BTreeMap, linked_list::LinkedList},
     string::String,
+    vec::Vec,
 };
 use core::{
     cell::{RefCell, RefMut},
     cmp::min,
+    ops::Deref,
+    usize,
 };
 use lazy_static::lazy_static;
 use spin::mutex::Mutex;
@@ -49,13 +52,69 @@ lazy_static! {
                 process: LinkedList::new(),
                 kernel_ctx: TrapContext::new(),
                 name_map: BTreeMap::new(),
+                kernel_token: 0,
             }
         })
     };
 }
 
+pub(crate) static PID_ALLOCATOR: Mutex<PidAllocator> = Mutex::new(PidAllocator::new());
+
+#[derive(PartialEq, PartialOrd)]
+pub(crate) struct PidWrapper(usize);
+
+impl Drop for PidWrapper {
+    fn drop(&mut self) {
+        PID_ALLOCATOR.lock().dealloc(self.0);
+    }
+}
+
+impl Deref for PidWrapper {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub(crate) struct PidAllocator {
+    start: usize,
+    end: usize,
+    recycled: Vec<usize>,
+}
+
+impl PidAllocator {
+    pub(crate) const fn new() -> Self {
+        Self {
+            start: 0,
+            end: usize::MAX,
+            recycled: Vec::new(),
+        }
+    }
+
+    pub(crate) fn alloc(&mut self) -> Option<PidWrapper> {
+        if !self.recycled.is_empty() {
+            let id = self.recycled.pop().unwrap();
+            return Some(PidWrapper(id));
+        } else {
+            if self.start < self.end {
+                let res = self.start;
+                self.start += 1;
+                return Some(PidWrapper(res));
+            } else {
+                return None;
+            }
+        }
+    }
+
+    pub(crate) fn dealloc(&mut self, pid: usize) {
+        assert!(pid < self.start);
+        self.recycled.push(pid);
+    }
+}
+
 pub(crate) struct Process {
-    pub(crate) pid: usize,
+    pub(crate) pid: PidWrapper,
     pub(crate) status: State,
     pub(crate) memory_set: MemorySet,
     pub(crate) trapctx_ppn: PhyPageNum,
@@ -83,7 +142,7 @@ pub(crate) struct ProgramManager {
     process: LinkedList<Process>,
     pub(crate) kernel_ctx: TrapContext,
     name_map: BTreeMap<String, usize>,
-    // current_entry: usize,
+    kernel_token: usize,
 }
 
 impl ProgramManager {
@@ -113,41 +172,74 @@ impl ProgramManager {
             str.clear();
         }
         println!("{:?}", self.name_map);
+        let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
+        self.kernel_token = kernel_token;
         // 进程相关
-        let kernel_satp = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
-        for i in 0..self.program_num {
-            let (memory_set, user_sp_top_va, entry_point) =
-                MemorySet::from_elf(unsafe { self.get_program_elf_bytes(i) });
-            let trapctx_ppn = memory_set
-                .page_table
-                .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
-                .unwrap()
-                .ppn();
-            let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
-            ctx.sepc = entry_point;
-            ctx.info.sp = user_sp_top_va;
-            ctx.kernel_satp = kernel_satp;
-            ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
-            ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
-            let process = Process {
-                pid: i,
-                status: State::Ready,
-                memory_set,
-                trapctx_ppn,
-            };
-            self.process.push_back(process);
-        }
-        let first = self.process.pop_front();
-        *self.current_program.lock() = first;
+        // let kernel_satp = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
+        // for i in 0..self.program_num {
+        //     let (memory_set, user_sp_top_va, entry_point) =
+        //         MemorySet::from_elf(unsafe { self.get_program_elf_bytes(i) });
+        //     let trapctx_ppn = memory_set
+        //         .page_table
+        //         .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
+        //         .unwrap()
+        //         .ppn();
+        //     let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
+        //     ctx.sepc = entry_point;
+        //     ctx.info.sp = user_sp_top_va;
+        //     ctx.kernel_satp = kernel_satp;
+        //     ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
+        //     ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
+        //     let process = Process {
+        //         pid: PID_ALLOCATOR.lock().alloc().unwrap(),
+        //         status: State::Ready,
+        //         memory_set,
+        //         trapctx_ppn,
+        //     };
+        //     self.process.push_back(process);
+        // }
+        // let first = self.process.pop_front();
+        // *self.current_program.lock() = first;
     }
 
-    unsafe fn get_program_elf_bytes(&mut self, id: usize) -> &'static [u8] {
+    pub(crate) fn exec(&mut self, elf_data: &'static [u8]) {
+        let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
+        let trapctx_ppn = memory_set
+            .page_table
+            .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
+            .unwrap()
+            .ppn();
+        let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
+        ctx.sepc = entry_point;
+        ctx.info.sp = user_sp_top_va;
+        ctx.kernel_token = self.kernel_token;
+        ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
+        ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
+        let process = Process {
+            pid: PID_ALLOCATOR.lock().alloc().unwrap(),
+            status: State::Ready,
+            memory_set,
+            trapctx_ppn,
+        };
+        let mut guard = self.current_program.lock();
+        match guard.as_ref() {
+            Some(_) => {
+                self.process.push_back(process);
+            }
+            None => {
+                *guard = Some(process);
+            }
+        }
+    }
+
+    // index范围：[0, program_num)
+    unsafe fn get_program_elf_bytes(&mut self, index: usize) -> &'static [u8] {
         let ptr = _num_program as usize as *const usize;
         let program_start_ptr = core::slice::from_raw_parts(ptr.add(1), self.program_num + 1);
-        assert!(id < self.program_num);
+        assert!(index < self.program_num);
         core::slice::from_raw_parts(
-            program_start_ptr[id] as *const u8,
-            program_start_ptr[id + 1] - program_start_ptr[id],
+            program_start_ptr[index] as *const u8,
+            program_start_ptr[index + 1] - program_start_ptr[index],
         )
     }
 
@@ -258,7 +350,7 @@ pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> RestoreBe
         if min_len < len {
             name.add(min_len).write_volatile(b'\0');
         }
-        id.write_volatile(mgr.current_program.lock().as_ref().unwrap().pid);
+        id.write_volatile(*mgr.current_program.lock().as_ref().unwrap().pid);
     };
     RestoreBehavior::DirectReturn(min_len)
 }

@@ -22,9 +22,10 @@ mod timer;
 
 mod temp_test;
 
+use alloc::vec::Vec;
 use core::arch::global_asm;
 use power::shutdown;
-use process::{run_program, PROGRAM_MANAGER};
+use process::{run_program, PidWrapper, PID_ALLOCATOR, PROGRAM_MANAGER};
 use temp_test::{frame_allocator_test, heap_test, remap_test};
 
 // 由于_start与架构相关，所以具体请移步arch_relate模块

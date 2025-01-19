@@ -11,8 +11,6 @@ pub mod io;
 pub mod allocator;
 pub mod syscall;
 
-#[global_allocator]
-#[link_section = ".data"]
 static HEAP_ALLOCATOR: BuddyAllocator = BuddyAllocator::uninit();
 
 #[no_mangle]

@@ -239,7 +239,7 @@ pub struct TrapContext {
     // 33
     pub sepc: usize,
     // 34
-    pub kernel_satp: usize,
+    pub kernel_token: usize,
     // 35
     pub kernel_sp: usize,
     // 36
@@ -252,7 +252,7 @@ impl TrapContext {
             info: RegInfo::new(),
             sstatus: riscv::register::sstatus::read(),
             sepc: 0,
-            kernel_satp: 0,
+            kernel_token: 0,
             kernel_sp: 0,
             trap_handler: 0,
         }
