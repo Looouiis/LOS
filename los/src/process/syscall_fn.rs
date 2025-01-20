@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use crate::process::{restore_to_kernel, PROGRAM_MANAGER};
+use crate::process::{reschedule, restore_to_kernel, set_nxt_trigger, PROGRAM_MANAGER};
 
 use super::RestoreBehavior;
 
@@ -13,7 +13,7 @@ pub(crate) fn sys_yield() -> RestoreBehavior {
 pub(crate) fn exit(code: usize) -> ! {
     log!("Program exit with {}", code);
     PROGRAM_MANAGER.get().exit_current();
-    restore_to_kernel()
+    reschedule()
 }
 
 pub(crate) fn sys_fork() -> RestoreBehavior {

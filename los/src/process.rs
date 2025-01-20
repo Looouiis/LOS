@@ -1,7 +1,5 @@
 use alloc::{
-    collections::{btree_map::BTreeMap, linked_list::LinkedList},
-    string::String,
-    vec::Vec,
+    collections::{btree_map::BTreeMap, linked_list::LinkedList}, slice, string::String, vec::Vec
 };
 use core::{
     cell::{RefCell, RefMut},
@@ -128,6 +126,37 @@ impl Process {
     pub(crate) fn get_token(&self) -> usize {
         arch_relate::to_token(self.memory_set.page_table.address())
     }
+
+    pub(crate) fn new(elf_data: &'static [u8]) -> Self {
+        let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
+        let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
+        let trapctx_ppn = memory_set
+            .page_table
+            .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
+            .unwrap()
+            .ppn();
+        let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
+        ctx.sepc = entry_point;
+        ctx.info.sp = user_sp_top_va;
+        ctx.kernel_token = kernel_token;
+        ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
+        ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
+        Self {
+            pid: PID_ALLOCATOR.lock().alloc().unwrap(),
+            status: State::Ready,
+            memory_set,
+            trapctx_ppn,
+        }
+    }
+
+    pub(crate) fn exec(&mut self, elf_data: &'static [u8]) {
+        *self = Self::new(elf_data);
+    }
+
+    pub(crate) fn fork(&mut self) {
+        todo!()
+    }
+
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -153,9 +182,6 @@ impl ProgramManager {
     pub(crate) fn init(&mut self) {
         // 读取名字
         let mut name_ptr = _program_names as usize as *const u8;
-        unsafe {
-            // name_ptr = name_ptr.add(1);
-        }
         let mut str = String::new();
         for i in 0..self.program_num {
             unsafe {
@@ -167,11 +193,9 @@ impl ProgramManager {
                 }
                 name_ptr = name_ptr.add(1);
             }
-            println!("{str}");
             self.name_map.insert(str.clone(), i);
             str.clear();
         }
-        println!("{:?}", self.name_map);
         let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
         self.kernel_token = kernel_token;
         // 进程相关
@@ -202,38 +226,39 @@ impl ProgramManager {
         // *self.current_program.lock() = first;
     }
 
-    pub(crate) fn exec(&mut self, elf_data: &'static [u8]) {
-        let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
-        let trapctx_ppn = memory_set
-            .page_table
-            .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
-            .unwrap()
-            .ppn();
-        let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
-        ctx.sepc = entry_point;
-        ctx.info.sp = user_sp_top_va;
-        ctx.kernel_token = self.kernel_token;
-        ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
-        ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
-        let process = Process {
-            pid: PID_ALLOCATOR.lock().alloc().unwrap(),
-            status: State::Ready,
-            memory_set,
-            trapctx_ppn,
-        };
-        let mut guard = self.current_program.lock();
-        match guard.as_ref() {
-            Some(_) => {
-                self.process.push_back(process);
-            }
+    pub(crate) fn add_task(&mut self, name: &str) {
+        match self.get_elf_by_name(name) {
+            Some(slice) => {
+                let process = Process::new(slice);
+                let mut guard = self.current_program.lock();
+                match guard.as_ref() {
+                    Some(_) => {
+                        self.process.push_back(process);
+                    },
+                    None => {
+                        *guard = Some(process);
+                    },
+                }
+            },
             None => {
-                *guard = Some(process);
+                panic!("internal error");
             }
         }
     }
 
+    pub(crate) fn get_elf_by_name(&self, name: &str) -> Option<&'static [u8]> {
+        match self.name_map.get(name) {
+            Some(index) => {
+                unsafe {
+                    Some(self.get_program_elf_bytes(*index))
+                }
+            },
+            None => None,
+        }
+    }
+
     // index范围：[0, program_num)
-    unsafe fn get_program_elf_bytes(&mut self, index: usize) -> &'static [u8] {
+    unsafe fn get_program_elf_bytes(&self, index: usize) -> &'static [u8] {
         let ptr = _num_program as usize as *const usize;
         let program_start_ptr = core::slice::from_raw_parts(ptr.add(1), self.program_num + 1);
         assert!(index < self.program_num);
@@ -257,7 +282,7 @@ impl ProgramManager {
                 *guard = Some(p);
                 true
             }
-            None => false,
+            None => self.current_program.lock().is_some(),
         }
     }
 
@@ -266,9 +291,11 @@ impl ProgramManager {
     }
 
     pub(crate) fn exit_current(&mut self) {
+        // 看起来Option.take的开销还是挺大的，有优化的潜力
         let mut exited = self.current_program.lock().take().unwrap();
         exited.status = State::Exited;
         drop(exited);
+        assert!(self.current_program.lock().is_none());
     }
 
     pub(crate) fn get_current_token(&self) -> usize {

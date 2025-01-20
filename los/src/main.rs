@@ -22,10 +22,10 @@ mod timer;
 
 mod temp_test;
 
-use alloc::vec::Vec;
 use core::arch::global_asm;
+use arch_relate::{disable_kernel_interrupt, timer::set_nxt_trigger};
 use power::shutdown;
-use process::{run_program, PidWrapper, PID_ALLOCATOR, PROGRAM_MANAGER};
+use process::{run_program, PROGRAM_MANAGER};
 use temp_test::{frame_allocator_test, heap_test, remap_test};
 
 // 由于_start与架构相关，所以具体请移步arch_relate模块
@@ -66,8 +66,9 @@ fn rust_main() {
 
     PROGRAM_MANAGER.get().print_info();
     PROGRAM_MANAGER.get().init();
-    // let num = run_program();
-    // log!("arch_relate::run_program entered {} times", num);
+    PROGRAM_MANAGER.get().add_task("initproc");
+    let num = run_program();
+    log!("arch_relate::run_program entered {} times", num);
     trace!("main trace");
     shutdown();
     // loop {}
