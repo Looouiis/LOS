@@ -1,5 +1,7 @@
 use alloc::{
-    collections::{btree_map::BTreeMap, linked_list::LinkedList}, slice, string::String, vec::Vec
+    collections::{btree_map::BTreeMap, linked_list::LinkedList},
+    string::String,
+    vec::Vec,
 };
 use core::{
     cell::{RefCell, RefMut},
@@ -153,10 +155,21 @@ impl Process {
         *self = Self::new(elf_data);
     }
 
-    pub(crate) fn fork(&mut self) {
-        todo!()
+    pub(crate) fn fork(&mut self) -> Self {
+        let mut memory_set = self.memory_set.fork();
+        memory_set.map_trampoline();
+        let trapctx_ppn = memory_set
+            .page_table
+            .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
+            .unwrap()
+            .ppn();
+        Self {
+            pid: PID_ALLOCATOR.lock().alloc().unwrap(),
+            status: self.status,
+            memory_set,
+            trapctx_ppn,
+        }
     }
-
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -234,12 +247,12 @@ impl ProgramManager {
                 match guard.as_ref() {
                     Some(_) => {
                         self.process.push_back(process);
-                    },
+                    }
                     None => {
                         *guard = Some(process);
-                    },
+                    }
                 }
-            },
+            }
             None => {
                 panic!("internal error");
             }
@@ -248,11 +261,7 @@ impl ProgramManager {
 
     pub(crate) fn get_elf_by_name(&self, name: &str) -> Option<&'static [u8]> {
         match self.name_map.get(name) {
-            Some(index) => {
-                unsafe {
-                    Some(self.get_program_elf_bytes(*index))
-                }
-            },
+            Some(index) => unsafe { Some(self.get_program_elf_bytes(*index)) },
             None => None,
         }
     }

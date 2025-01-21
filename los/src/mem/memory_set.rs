@@ -28,6 +28,7 @@ pub(crate) enum MapType {
 }
 
 bitflags! {
+    #[derive(Clone, Copy)]
     pub struct MapPermission: u8 {
         const R = 1 << 1;
         const W = 1 << 2;
@@ -113,6 +114,21 @@ impl MapArea {
             }
         }
     }
+
+    pub(crate) fn clone_data(&self, page_table: &PageTable, other: &MapArea) {
+        if self.map_type == MapType::Framed {
+            for vpn in other.vpn_range {
+                let src = other
+                    .data_frames
+                    .get(&vpn)
+                    .expect("internal error: vpn match failed")
+                    .ppn
+                    .get_bytes_array();
+                let dst = page_table.vpn_to_pte(vpn).unwrap().ppn().get_bytes_array();
+                dst.copy_from_slice(src);
+            }
+        }
+    }
 }
 
 pub(crate) struct MemorySet {
@@ -136,11 +152,24 @@ impl MemorySet {
         self.areas.push(map_area);
     }
 
+    fn fork_area(&mut self, other_area: &MapArea) {
+        let range: super::address::SimpleRange<VirPageNum> = other_area.vpn_range;
+        let mut map_area: MapArea = MapArea::new(
+            VirAddr::from(range.get_start()),
+            VirAddr::from(range.get_end()),
+            other_area.map_type,
+            other_area.map_per,
+        );
+        map_area.reflect_self_to_page_table(&mut self.page_table);
+        map_area.clone_data(&self.page_table, other_area);
+        self.areas.push(map_area);
+    }
+
     // pub(crate) fn insert_framed_area(&mut self, start: VirAddr, end: VirAddr, permission: MapPermission) {
     //     self.areas.push(MapArea::new(start, end, MapType::Framed, permission));
     // }
 
-    fn map_trampoline(&mut self) {
+    pub(crate) fn map_trampoline(&mut self) {
         extern "C" {
             fn __trampoline_start();
         }
@@ -297,6 +326,15 @@ impl MemorySet {
             user_stack_top_va,
             elf.header.pt2.entry_point() as usize,
         )
+    }
+
+    // 没有设计为Clone trait，因为他涉及到数据的深拷贝
+    pub(crate) fn fork(&self) -> Self {
+        let mut memory_set = Self::empty();
+        for area in &self.areas {
+            memory_set.fork_area(area);
+        }
+        memory_set
     }
 
     pub(crate) fn activate(&self) {

@@ -22,8 +22,8 @@ mod timer;
 
 mod temp_test;
 
-use core::arch::global_asm;
 use arch_relate::{disable_kernel_interrupt, timer::set_nxt_trigger};
+use core::arch::global_asm;
 use power::shutdown;
 use process::{run_program, PROGRAM_MANAGER};
 use temp_test::{frame_allocator_test, heap_test, remap_test};
