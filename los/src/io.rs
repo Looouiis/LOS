@@ -70,8 +70,8 @@ macro_rules! println {
 
 const STDOUT: usize = 1;
 
-pub(crate) fn get_user_slice(satp: usize, ptr: *const u8, len: usize) -> Vec<&'static [u8]> {
-    let page_table = ROTable::from_token(satp);
+pub(crate) fn get_user_slice(token: usize, ptr: *const u8, len: usize) -> Vec<&'static [u8]> {
+    let page_table = ROTable::from_token(token);
     let mut start = ptr as usize;
     let end = start + len;
     let mut v = Vec::new();

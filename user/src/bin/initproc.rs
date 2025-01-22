@@ -9,7 +9,7 @@ extern crate user;
 #[no_mangle]
 fn main() -> i32 {
     if fork() == 0 {
-        exec("shell");
+        exec("usershell");
     } else {
         loop {
             let mut exit_code = 0;

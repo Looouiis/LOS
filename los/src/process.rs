@@ -60,7 +60,7 @@ lazy_static! {
 
 pub(crate) static PID_ALLOCATOR: Mutex<PidAllocator> = Mutex::new(PidAllocator::new());
 
-#[derive(PartialEq, PartialOrd)]
+#[derive(PartialEq, PartialOrd, Clone)]
 pub(crate) struct PidWrapper(usize);
 
 impl Drop for PidWrapper {
@@ -152,17 +152,37 @@ impl Process {
     }
 
     pub(crate) fn exec(&mut self, elf_data: &'static [u8]) {
-        *self = Self::new(elf_data);
-    }
-
-    pub(crate) fn fork(&mut self) -> Self {
-        let mut memory_set = self.memory_set.fork();
-        memory_set.map_trampoline();
+        let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
+        let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
         let trapctx_ppn = memory_set
             .page_table
             .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
             .unwrap()
             .ppn();
+        let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
+        ctx.sepc = entry_point;
+        ctx.info.sp = user_sp_top_va;
+        ctx.kernel_token = kernel_token;
+        ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
+        ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
+        self.status = State::Ready;
+        self.memory_set = memory_set;
+        self.trapctx_ppn = trapctx_ppn;
+    }
+
+    pub(crate) fn fork(&mut self) -> Self {
+        let mut memory_set = self.memory_set.fork();
+        memory_set.map_trampoline();
+        let src = &mut (self.trapctx_ppn.get_bytes_array()[..size_of::<TrapContext>()]);
+        let trapctx_ppn = memory_set
+            .page_table
+            .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
+            .unwrap()
+            .ppn();
+        let dst = &mut (trapctx_ppn.get_bytes_array()[..src.len()]);
+        dst.copy_from_slice(&src);
+        let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
+        ctx.info.a0 = 0;
         Self {
             pid: PID_ALLOCATOR.lock().alloc().unwrap(),
             status: self.status,
@@ -254,7 +274,7 @@ impl ProgramManager {
                 }
             }
             None => {
-                panic!("internal error");
+                panic!("internal error, name: {}", name);
             }
         }
     }

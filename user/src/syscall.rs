@@ -127,7 +127,7 @@ pub fn sys_fork() -> usize {
 ///
 /// syscall ID：221
 pub fn sys_exec(str: &str) -> isize {
-    syscall(SYSCALL_EXEC, [str.as_ptr() as usize, 0, 0]) as isize
+    syscall(SYSCALL_EXEC, [str.as_ptr() as usize, str.len(), 0]) as isize
 }
 
 /// 功能：从文件中读取一段内容到缓冲区。
