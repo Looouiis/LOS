@@ -1,7 +1,5 @@
 use alloc::{
-    collections::{btree_map::BTreeMap, linked_list::LinkedList},
-    string::String,
-    vec::Vec,
+    collections::{btree_map::BTreeMap, linked_list::LinkedList}, string::String, sync::Arc, vec::Vec
 };
 use core::{
     cell::{RefCell, RefMut},
@@ -48,7 +46,7 @@ lazy_static! {
             let program_num = ptr.read_volatile();
             ProgramManager {
                 program_num,
-                current_program: Mutex::new(None),
+                current_program: None,
                 process: LinkedList::new(),
                 kernel_ctx: TrapContext::new(),
                 name_map: BTreeMap::new(),
@@ -129,7 +127,7 @@ impl Process {
         arch_relate::to_token(self.memory_set.page_table.address())
     }
 
-    pub(crate) fn new(elf_data: &'static [u8]) -> Self {
+    pub(crate) fn new(elf_data: &'static [u8]) -> Arc<Mutex<Self>> {
         let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
         let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
         let trapctx_ppn = memory_set
@@ -143,12 +141,14 @@ impl Process {
         ctx.kernel_token = kernel_token;
         ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
         ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
-        Self {
-            pid: PID_ALLOCATOR.lock().alloc().unwrap(),
-            status: State::Ready,
-            memory_set,
-            trapctx_ppn,
-        }
+        Arc::new(Mutex::new(
+            Self {
+                pid: PID_ALLOCATOR.lock().alloc().unwrap(),
+                status: State::Ready,
+                memory_set,
+                trapctx_ppn,
+            }
+        ))
     }
 
     pub(crate) fn exec(&mut self, elf_data: &'static [u8]) {
@@ -170,7 +170,7 @@ impl Process {
         self.trapctx_ppn = trapctx_ppn;
     }
 
-    pub(crate) fn fork(&mut self) -> Self {
+    pub(crate) fn fork(&mut self) -> Arc<Mutex<Self>> {
         let mut memory_set = self.memory_set.fork();
         memory_set.map_trampoline();
         let src = &mut (self.trapctx_ppn.get_bytes_array()[..size_of::<TrapContext>()]);
@@ -183,12 +183,14 @@ impl Process {
         dst.copy_from_slice(&src);
         let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
         ctx.info.a0 = 0;
-        Self {
-            pid: PID_ALLOCATOR.lock().alloc().unwrap(),
-            status: self.status,
-            memory_set,
-            trapctx_ppn,
-        }
+        Arc::new(Mutex::new(
+            Self {
+                pid: PID_ALLOCATOR.lock().alloc().unwrap(),
+                status: self.status,
+                memory_set,
+                trapctx_ppn,
+            }
+        ))
     }
 }
 
@@ -200,8 +202,8 @@ pub(crate) enum State {
 
 pub(crate) struct ProgramManager {
     program_num: usize,
-    current_program: Mutex<Option<Process>>,
-    process: LinkedList<Process>,
+    current_program: Option<Arc<Mutex<Process>>>,
+    process: LinkedList<Arc<Mutex<Process>>>,
     pub(crate) kernel_ctx: TrapContext,
     name_map: BTreeMap<String, usize>,
     kernel_token: usize,
@@ -263,13 +265,21 @@ impl ProgramManager {
         match self.get_elf_by_name(name) {
             Some(slice) => {
                 let process = Process::new(slice);
-                let mut guard = self.current_program.lock();
-                match guard.as_ref() {
+                // let mut guard = self.current_program.lock();
+                // match guard.as_ref() {
+                //     Some(_) => {
+                //         self.process.push_back(process);
+                //     }
+                //     None => {
+                //         *guard = Some(process);
+                //     }
+                // }
+                match self.current_program {
                     Some(_) => {
                         self.process.push_back(process);
                     }
                     None => {
-                        *guard = Some(process);
+                        self.current_program = Some(process);
                     }
                 }
             }
@@ -301,41 +311,49 @@ impl ProgramManager {
     fn nxt_program(&mut self) -> bool {
         match self.process.pop_front() {
             Some(p) => {
-                let mut guard = self.current_program.lock();
-                match guard.take() {
-                    Some(cur_process) => {
-                        self.process.push_back(cur_process);
-                    }
-                    None => {}
+                // let mut guard = self.current_program.lock();
+                // match guard.take() {
+                //     Some(cur_process) => {
+                //         self.process.push_back(cur_process);
+                //     }
+                //     None => {}
+                // }
+                // *guard = Some(p);
+                match &self.current_program {
+                    Some(process) => {
+                        self.process.push_back(process.clone());
+                    },
+                    None => {
+                        self.current_program = Some(p);
+                    },
                 }
-                *guard = Some(p);
                 true
             }
-            None => self.current_program.lock().is_some(),
+            None => self.current_program.is_some(),
         }
     }
 
-    pub(crate) fn get_process(&self) -> &Mutex<Option<Process>> {
+    pub(crate) fn get_process(&self) -> &Option<Arc<Mutex<Process>>> {
         &self.current_program
     }
 
     pub(crate) fn exit_current(&mut self) {
         // 看起来Option.take的开销还是挺大的，有优化的潜力
-        let mut exited = self.current_program.lock().take().unwrap();
-        exited.status = State::Exited;
+        let exited = self.current_program.take().unwrap();
+        exited.lock().status = State::Exited;
         drop(exited);
-        assert!(self.current_program.lock().is_none());
+        assert!(self.current_program.is_none());
     }
 
     pub(crate) fn get_current_token(&self) -> usize {
-        self.current_program.lock().as_ref().unwrap().get_token()
+        self.current_program.as_ref().unwrap().lock().get_token()
     }
 
     pub(crate) fn get_current_trap_context(&self) -> &'static mut TrapContext {
         self.current_program
-            .lock()
             .as_ref()
             .unwrap()
+            .lock()
             .get_trap_context()
     }
 }
@@ -406,7 +424,7 @@ pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> RestoreBe
         if min_len < len {
             name.add(min_len).write_volatile(b'\0');
         }
-        id.write_volatile(*mgr.current_program.lock().as_ref().unwrap().pid);
+        id.write_volatile(*mgr.current_program.as_ref().unwrap().lock().pid);
     };
     RestoreBehavior::DirectReturn(min_len)
 }

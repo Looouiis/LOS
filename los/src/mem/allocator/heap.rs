@@ -5,7 +5,7 @@ use spin::Mutex;
 use crate::config::HEAP_SIZE;
 
 #[link_section = ".data"]
-pub(crate) static HEAP: [usize; HEAP_SIZE] = [0; HEAP_SIZE];
+pub(crate) static HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 
 pub struct BuddyAllocator {
     inner: Mutex<Heap>,

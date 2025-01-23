@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use user::{exec, fork, io::get_char, waitpid};
+use user::{fork, io::get_char, waitpid};
 
 #[macro_use]
 extern crate user;

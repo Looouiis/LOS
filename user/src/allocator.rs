@@ -2,10 +2,10 @@ use core::{alloc::GlobalAlloc, ptr};
 
 use spin::Mutex;
 
-pub const HEAP_SIZE: usize = 0x30_0000;
+pub const HEAP_SIZE: usize = 16384;
 
 #[link_section = ".bss"]
-pub(crate) static HEAP: [usize; HEAP_SIZE] = [0; HEAP_SIZE];
+pub(crate) static HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 
 pub struct BuddyAllocator {
     inner: Mutex<Heap>,

@@ -44,17 +44,17 @@ pub(crate) fn prepare_registers() {
 #[no_mangle]
 pub(crate) unsafe fn run_program(/*process: Process*/) {
     const CLEAR_SPP: usize = !(1usize << 8);
+    const CLEAR_SPIE: usize = !(1usize << 5);
     sstatus::set_spp(sstatus::SPP::Supervisor);
     assert!(sstatus::read().spp() == sstatus::SPP::Supervisor);
     let mgr = PROGRAM_MANAGER.get();
-    let guard = mgr.get_process().lock();
-    let satp = match guard.as_ref() {
-        Some(process) => process.get_token(),
+    let process = mgr.get_process();
+    let token = match process.as_ref() {
+        Some(process) => process.lock().get_token(),
         None => return,
     };
     let kernel_ctx_ptr = core::ptr::addr_of!(mgr.kernel_ctx);
     let restore_va = get_restore_va();
-    drop(guard);
     drop(mgr);
     trace!("arch_relate::run_program entered");
     arch_relate::timer::set_nxt_trigger();
@@ -90,6 +90,7 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
         // save!(x30 => a3[30]),
         // save!(x31 => a3[31]),
         "   csrr t3, sstatus
+            andi t3, t3, {clear_spie}
             csrw sepc, t0
             csrw sscratch, a0
             la t2, 0f
@@ -98,7 +99,7 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
         save!(t2 => a3[33]),
         save!(t3 => a3[32]),
         "   csrr a3, sstatus
-            andi a3, a3, {clear_spp}
+            // andi a3, a3, {clear_spp}
             csrw sstatus, a3
 
             fence.i
@@ -107,9 +108,10 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
         ",
         in("a0") TRAP_CONTEXT,
         in("a3") kernel_ctx_ptr,
-        in("a1") satp,
+        in("a1") token,
         restore_va = in(reg) restore_va,
         clear_spp = const CLEAR_SPP,
+        clear_spie = const CLEAR_SPIE,
     );
 }
 
