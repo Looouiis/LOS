@@ -8,5 +8,5 @@ pub(crate) struct KernelStack([u8; KERNAL_STACK_SIZE]);
 #[link_section = ".bss.stack"]
 pub(crate) static KERNAL_STACK: KernelStack = KernelStack([0; KERNAL_STACK_SIZE]);
 
-#[link_section = ".bss.stack"]
-pub(crate) static TRAP_STACK: KernelStack = KernelStack([0; KERNAL_STACK_SIZE]);
+// #[link_section = ".bss.stack"]
+// pub(crate) static TRAP_STACK: KernelStack = KernelStack([0; KERNAL_STACK_SIZE]);

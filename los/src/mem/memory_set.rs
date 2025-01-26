@@ -144,7 +144,7 @@ impl MemorySet {
         }
     }
 
-    fn push_area(&mut self, mut map_area: MapArea, init_data: Option<&[u8]>) {
+    pub(crate) fn push_area(&mut self, mut map_area: MapArea, init_data: Option<&[u8]>) {
         map_area.reflect_self_to_page_table(&mut self.page_table);
         if let Some(data) = init_data {
             map_area.copy_data(&self.page_table, data);

@@ -1,11 +1,15 @@
 use alloc::{
-    collections::{btree_map::BTreeMap, linked_list::LinkedList}, string::String, sync::Arc, vec::Vec
+    alloc::{alloc, dealloc},
+    collections::{btree_map::BTreeMap, linked_list::LinkedList},
+    string::String,
+    sync::Arc,
+    vec::Vec,
 };
 use core::{
+    alloc::Layout,
     cell::{RefCell, RefMut},
     cmp::min,
     ops::Deref,
-    usize,
 };
 use lazy_static::lazy_static;
 use spin::mutex::Mutex;
@@ -14,14 +18,14 @@ use crate::{
     arch_relate::{
         self,
         timer::set_nxt_trigger,
-        trap::{trap_return, TrapContext},
+        trap::{trap_return, ProcessContext, TrapContext},
     },
     config::TRAP_CONTEXT,
     mem::{
         address::{PhyPageNum, VirAddr},
-        memory_set::{MemorySet, KERNEL_SPACE},
+        memory_set::{MapArea, MapPermission, MapType, MemorySet, KERNEL_SPACE},
     },
-    stack::{KERNAL_STACK_SIZE, TRAP_STACK},
+    stack::{KernelStack, KERNAL_STACK_SIZE},
 };
 
 pub(crate) mod syscall_fn;
@@ -116,6 +120,7 @@ pub(crate) struct Process {
     pub(crate) status: State,
     pub(crate) memory_set: MemorySet,
     pub(crate) trapctx_ppn: PhyPageNum,
+    pub(crate) process_ctx: ProcessContext,
 }
 
 impl Process {
@@ -129,7 +134,7 @@ impl Process {
 
     pub(crate) fn new(elf_data: &'static [u8]) -> Arc<Mutex<Self>> {
         let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
-        let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
+        let (mut memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
         let trapctx_ppn = memory_set
             .page_table
             .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
@@ -140,18 +145,36 @@ impl Process {
         ctx.info.sp = user_sp_top_va;
         ctx.kernel_token = kernel_token;
         ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
-        ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
-        Arc::new(Mutex::new(
-            Self {
-                pid: PID_ALLOCATOR.lock().alloc().unwrap(),
-                status: State::Ready,
-                memory_set,
-                trapctx_ppn,
-            }
-        ))
+        let kernel_stack =
+            unsafe { alloc(Layout::from_size_align(size_of::<KernelStack>(), 4096).unwrap()) };
+        memory_set.push_area(
+            MapArea::new(
+                VirAddr::from(kernel_stack as usize),
+                VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
+                MapType::Identical,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
+        ctx.kernel_sp = kernel_stack as usize + KERNAL_STACK_SIZE;
+        Arc::new(Mutex::new(Self {
+            pid: PID_ALLOCATOR.lock().alloc().unwrap(),
+            status: State::Ready,
+            memory_set,
+            trapctx_ppn,
+            process_ctx: ProcessContext::new(),
+        }))
     }
 
     pub(crate) fn exec(&mut self, elf_data: &'static [u8]) {
+        let kernel_stack_top = self
+            .memory_set
+            .page_table
+            .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
+            .unwrap()
+            .ppn()
+            .get_mut_data_at_start::<TrapContext>()
+            .kernel_sp;
         let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
         let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
         let trapctx_ppn = memory_set
@@ -164,7 +187,18 @@ impl Process {
         ctx.info.sp = user_sp_top_va;
         ctx.kernel_token = kernel_token;
         ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
-        ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
+        // let kernel_stack = unsafe { alloc(Layout::from_size_align(size_of::<KernelStack>(), 4096).unwrap()) };
+        // memory_set.push_area(
+        //     MapArea::new(
+        //         VirAddr::from(kernel_stack as usize),
+        //         VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
+        //         MapType::Identical,
+        //         MapPermission::R | MapPermission::W,
+        //     ),
+        //     None,
+        // );
+        ctx.kernel_sp = kernel_stack_top;
+        // ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
         self.status = State::Ready;
         self.memory_set = memory_set;
         self.trapctx_ppn = trapctx_ppn;
@@ -182,15 +216,50 @@ impl Process {
         let dst = &mut (trapctx_ppn.get_bytes_array()[..src.len()]);
         dst.copy_from_slice(&src);
         let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
+        let kernel_stack =
+            unsafe { alloc(Layout::from_size_align(size_of::<KernelStack>(), 4096).unwrap()) };
+        memory_set.push_area(
+            MapArea::new(
+                VirAddr::from(kernel_stack as usize),
+                VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
+                MapType::Identical,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
+        unsafe {
+            let src = core::slice::from_raw_parts(
+                (ctx.kernel_sp - KERNAL_STACK_SIZE) as *const u8,
+                KERNAL_STACK_SIZE,
+            );
+            let dst = core::slice::from_raw_parts_mut(kernel_stack, KERNAL_STACK_SIZE);
+            dst.copy_from_slice(src);
+        }
+        ctx.kernel_sp = kernel_stack as usize + KERNAL_STACK_SIZE;
         ctx.info.a0 = 0;
-        Arc::new(Mutex::new(
-            Self {
-                pid: PID_ALLOCATOR.lock().alloc().unwrap(),
-                status: self.status,
-                memory_set,
-                trapctx_ppn,
-            }
-        ))
+        Arc::new(Mutex::new(Self {
+            pid: PID_ALLOCATOR.lock().alloc().unwrap(),
+            status: self.status,
+            memory_set,
+            trapctx_ppn,
+            process_ctx: ProcessContext::new(),
+        }))
+    }
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        let kernel_sp_top = self
+            .trapctx_ppn
+            .get_mut_data_at_start::<TrapContext>()
+            .kernel_sp;
+        let kernel_sp_ptr = kernel_sp_top - KERNAL_STACK_SIZE;
+        unsafe {
+            dealloc(
+                kernel_sp_ptr as *mut u8,
+                Layout::from_size_align(size_of::<KernelStack>(), 4096).unwrap(),
+            )
+        };
     }
 }
 
@@ -322,10 +391,10 @@ impl ProgramManager {
                 match &self.current_program {
                     Some(process) => {
                         self.process.push_back(process.clone());
-                    },
+                    }
                     None => {
                         self.current_program = Some(p);
-                    },
+                    }
                 }
                 true
             }

@@ -1,6 +1,10 @@
 #![allow(unused)]
 
-use crate::{arch_relate::disable_kernel_interrupt, io::get_user_slice, process::{reschedule, restore_to_kernel, PROGRAM_MANAGER}};
+use crate::{
+    arch_relate::disable_kernel_interrupt,
+    io::get_user_slice,
+    process::{reschedule, restore_to_kernel, PROGRAM_MANAGER},
+};
 
 use super::{Process, RestoreBehavior};
 
@@ -24,7 +28,7 @@ pub(crate) fn sys_fork() -> RestoreBehavior {
             let forked = process.lock().fork();
             pid = *(forked.lock().pid);
             mgr.process.push_front(forked);
-        },
+        }
         None => unreachable!(),
     }
     RestoreBehavior::DirectReturn(pid)
@@ -44,15 +48,11 @@ pub(crate) fn sys_exec(buf: *const u8, len: usize) -> RestoreBehavior {
             match mgr.current_program.as_mut() {
                 Some(process) => {
                     process.lock().exec(data);
-                },
+                }
                 None => unreachable!(),
             }
-        },
-        None => {
-            log!("can't find target elf by name {str}");
-            drop(mgr);
-            exit(1);
-        },
+            RestoreBehavior::DirectReturn(0)
+        }
+        None => RestoreBehavior::DirectReturn(-1isize as usize),
     }
-    RestoreBehavior::DirectReturn(0)
 }

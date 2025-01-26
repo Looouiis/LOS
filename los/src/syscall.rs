@@ -19,6 +19,6 @@ pub(crate) fn syscall(id: usize, args: [usize; 3]) -> RestoreBehavior {
         _ => {
             log!("unsupported syscall: {}", id);
             exit(1);
-        },
+        }
     }
 }

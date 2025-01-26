@@ -1,6 +1,6 @@
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 use riscv::register::sstatus;
-use trap::get_restore_va;
+use trap::{get_restore_va, ProcessContext};
 
 use crate::{
     arch_relate,
@@ -113,6 +113,42 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
         clear_spp = const CLEAR_SPP,
         clear_spie = const CLEAR_SPIE,
     );
+}
+
+#[no_mangle]
+#[naked]
+pub(crate) unsafe extern "C" fn switch(from: &ProcessContext, to: &ProcessContext) {
+    naked_asm!(
+        save!(x1 => a0[0]),
+        save!(x2 => a0[1]),
+        save!(x8 => a0[2]),
+        save!(x9 => a0[3]),
+        save!(x18 => a0[4]),
+        save!(x19 => a0[5]),
+        save!(x20 => a0[6]),
+        save!(x21 => a0[7]),
+        save!(x22 => a0[8]),
+        save!(x23 => a0[9]),
+        save!(x24 => a0[10]),
+        save!(x25 => a0[11]),
+        save!(x26 => a0[12]),
+        save!(x27 => a0[13]),
+        load!(a1[0] => x1),
+        load!(a1[1] => x2),
+        load!(a1[2] => x8),
+        load!(a1[3] => x9),
+        load!(a1[4] => x18),
+        load!(a1[5] => x19),
+        load!(a1[6] => x20),
+        load!(a1[7] => x21),
+        load!(a1[8] => x22),
+        load!(a1[9] => x23),
+        load!(a1[10] => x24),
+        load!(a1[11] => x25),
+        load!(a1[12] => x26),
+        load!(a1[13] => x27),
+        "ret",
+    )
 }
 
 pub(crate) fn enable_kernel_interrupt() {

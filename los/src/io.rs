@@ -1,7 +1,7 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use crate::{
-    arch_relate::ecall::putch,
+    arch_relate::ecall::{getch, putch},
     mem::{
         address::{StepByOne, VirAddr},
         page_table::ROTable,
@@ -69,6 +69,7 @@ macro_rules! println {
 }
 
 const STDOUT: usize = 1;
+const STDIN: usize = 0;
 
 pub(crate) fn get_user_slice(token: usize, ptr: *const u8, len: usize) -> Vec<&'static [u8]> {
     let page_table = ROTable::from_token(token);
@@ -101,6 +102,19 @@ pub(crate) fn linux_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehav
             }
             RestoreBehavior::DirectReturn(len)
         }
-        _ => panic!("unsupported fd type: {}", STDOUT),
+        _ => panic!("unsupported fd type: {}", fd),
+    }
+}
+
+pub(crate) fn sys_read(fd: usize, buf: *const u8, len: usize) {
+    match fd {
+        STDIN => {
+            let token = PROGRAM_MANAGER.get().get_current_token();
+            let page_table = ROTable::from_token(token);
+            for offset in 0..len {
+                let ch = getch();
+            }
+        }
+        _ => panic!("unsupported fd type: {}", fd),
     }
 }

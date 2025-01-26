@@ -6,7 +6,7 @@ use crate::{
     arch_relate::to_token,
     config::{TRAMPOLINE, TRAP_CONTEXT},
     mem::memory_set::KERNEL_SPACE,
-    stack::{KERNAL_STACK_SIZE, TRAP_STACK},
+    stack::KERNAL_STACK_SIZE,
 };
 
 use super::PROGRAM_MANAGER;
@@ -139,12 +139,11 @@ pub(crate) unsafe extern "C" fn trap_handler() {
         "   csrw satp, t0
             sfence.vma
             // mv a0, sp
-            // la sp, {stack_btn}
             // li t0, {stack_size}
             // add sp, sp, t0
             jr t1           // jump to syscall_service
         ",
-        stack_btn = sym TRAP_STACK,
+        // stack_btn = sym TRAP_STACK,
         stack_size = const KERNAL_STACK_SIZE,
         options(noreturn)
     );
@@ -353,6 +352,21 @@ impl RegInfo {
             t4: 0,
             t5: 0,
             t6: 0,
+        }
+    }
+}
+
+#[repr(C)]
+pub(crate) struct ProcessContext {
+    ra: usize,
+    reg: [usize; 13],
+}
+
+impl ProcessContext {
+    pub(crate) fn new() -> Self {
+        Self {
+            ra: 0,
+            reg: [0; 13],
         }
     }
 }
