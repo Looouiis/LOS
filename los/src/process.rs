@@ -16,7 +16,7 @@ use spin::mutex::Mutex;
 
 use crate::{
     arch_relate::{
-        self,
+        self, switch,
         timer::set_nxt_trigger,
         trap::{trap_return, ProcessContext, TrapContext},
     },
@@ -52,7 +52,8 @@ lazy_static! {
                 program_num,
                 current_program: None,
                 process: LinkedList::new(),
-                kernel_ctx: TrapContext::new(),
+                // kernel_ctx: TrapContext::new(),
+                kernel_ctx: ProcessContext::new(),
                 name_map: BTreeMap::new(),
                 kernel_token: 0,
             }
@@ -157,12 +158,14 @@ impl Process {
             None,
         );
         ctx.kernel_sp = kernel_stack as usize + KERNAL_STACK_SIZE;
+        let mut process_ctx = ProcessContext::new();
+        process_ctx.init(trap_return as usize, ctx.kernel_sp);
         Arc::new(Mutex::new(Self {
             pid: PID_ALLOCATOR.lock().alloc().unwrap(),
             status: State::Ready,
             memory_set,
             trapctx_ppn,
-            process_ctx: ProcessContext::new(),
+            process_ctx,
         }))
     }
 
@@ -237,12 +240,14 @@ impl Process {
         }
         ctx.kernel_sp = kernel_stack as usize + KERNAL_STACK_SIZE;
         ctx.info.a0 = 0;
+        let mut process_ctx = ProcessContext::new();
+        process_ctx.init(trap_return as usize, ctx.kernel_sp);
         Arc::new(Mutex::new(Self {
             pid: PID_ALLOCATOR.lock().alloc().unwrap(),
             status: self.status,
             memory_set,
             trapctx_ppn,
-            process_ctx: ProcessContext::new(),
+            process_ctx,
         }))
     }
 }
@@ -273,7 +278,8 @@ pub(crate) struct ProgramManager {
     program_num: usize,
     current_program: Option<Arc<Mutex<Process>>>,
     process: LinkedList<Arc<Mutex<Process>>>,
-    pub(crate) kernel_ctx: TrapContext,
+    // pub(crate) kernel_ctx: TrapContext,
+    pub(crate) kernel_ctx: ProcessContext,
     name_map: BTreeMap<String, usize>,
     kernel_token: usize,
 }
@@ -378,28 +384,35 @@ impl ProgramManager {
 
     // 将program_manager内部的指针转移指向下一个program
     fn nxt_program(&mut self) -> bool {
-        match self.process.pop_front() {
-            Some(p) => {
-                // let mut guard = self.current_program.lock();
-                // match guard.take() {
-                //     Some(cur_process) => {
-                //         self.process.push_back(cur_process);
-                //     }
-                //     None => {}
-                // }
-                // *guard = Some(p);
-                match &self.current_program {
-                    Some(process) => {
-                        self.process.push_back(process.clone());
+        for _i in 0..self.process.len() {
+            match self.process.pop_front() {
+                Some(p) => {
+                    // let mut guard = self.current_program.lock();
+                    // match guard.take() {
+                    //     Some(cur_process) => {
+                    //         self.process.push_back(cur_process);
+                    //     }
+                    //     None => {}
+                    // }
+                    // *guard = Some(p);
+                    if p.lock().status != State::Ready {
+                        self.process.push_back(p);
+                        continue;
                     }
-                    None => {
-                        self.current_program = Some(p);
+                    match &self.current_program {
+                        Some(process) => {
+                            self.process.push_back(process.clone());
+                        }
+                        None => {}
                     }
+                    self.current_program = Some(p);
+                    return true;
                 }
-                true
+                None => return self.current_program.is_some(),
             }
-            None => self.current_program.is_some(),
         }
+        return self.current_program.is_some()
+            && self.current_program.as_ref().unwrap().lock().status == State::Ready;
     }
 
     pub(crate) fn get_process(&self) -> &Option<Arc<Mutex<Process>>> {
@@ -408,10 +421,10 @@ impl ProgramManager {
 
     pub(crate) fn exit_current(&mut self) {
         // 看起来Option.take的开销还是挺大的，有优化的潜力
-        let exited = self.current_program.take().unwrap();
+        let exited = self.current_program.as_mut().unwrap();
         exited.lock().status = State::Exited;
-        drop(exited);
-        assert!(self.current_program.is_none());
+        // drop(exited);
+        // assert!(self.current_program.is_none());
     }
 
     pub(crate) fn get_current_token(&self) -> usize {
@@ -457,9 +470,9 @@ impl<T> Drop for ArcCell<T> {
 }
 
 #[inline]
-pub(crate) fn reschedule() -> ! {
+pub(crate) fn reschedule() {
     set_nxt_trigger();
-    restore_to_kernel()
+    restore_to_kernel();
 }
 
 pub(crate) fn run_program() -> usize {
@@ -480,8 +493,14 @@ pub(crate) fn run_program() -> usize {
 }
 
 #[inline]
-pub(crate) fn restore_to_kernel() -> ! {
-    trap_return(true);
+pub(crate) fn restore_to_kernel() {
+    let mgr = PROGRAM_MANAGER.get();
+    let guard = mgr.current_program.as_ref().unwrap().lock();
+    let ker_ctx = core::ptr::addr_of!(mgr.kernel_ctx);
+    let usr_ctx = core::ptr::addr_of!(guard.process_ctx);
+    drop(guard);
+    drop(mgr);
+    unsafe { switch(usr_ctx, ker_ctx) };
 }
 
 pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> RestoreBehavior {

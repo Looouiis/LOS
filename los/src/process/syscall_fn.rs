@@ -1,5 +1,7 @@
 #![allow(unused)]
 
+use alloc::vec::Vec;
+
 use crate::{
     arch_relate::disable_kernel_interrupt,
     io::get_user_slice,
@@ -17,7 +19,8 @@ pub(crate) fn sys_yield() -> RestoreBehavior {
 pub(crate) fn exit(code: usize) -> ! {
     log!("Program exit with {}", code);
     PROGRAM_MANAGER.get().exit_current();
-    reschedule()
+    reschedule();
+    unreachable!()
 }
 
 pub(crate) fn sys_fork() -> RestoreBehavior {

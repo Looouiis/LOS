@@ -1,4 +1,5 @@
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
+use core::fmt::Write;
 
 use crate::{
     arch_relate::ecall::{getch, putch},
@@ -6,9 +7,9 @@ use crate::{
         address::{StepByOne, VirAddr},
         page_table::ROTable,
     },
-    process::{RestoreBehavior, PROGRAM_MANAGER},
+    process::{restore_to_kernel, RestoreBehavior},
+    PROGRAM_MANAGER,
 };
-use core::fmt::Write;
 
 struct Stdout;
 
@@ -106,15 +107,35 @@ pub(crate) fn linux_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehav
     }
 }
 
-pub(crate) fn sys_read(fd: usize, buf: *const u8, len: usize) {
+pub(crate) fn sys_read(fd: usize, buf: *mut u8, len: usize) -> RestoreBehavior {
+    let mut cnt = 0;
     match fd {
         STDIN => {
             let token = PROGRAM_MANAGER.get().get_current_token();
             let page_table = ROTable::from_token(token);
             for offset in 0..len {
-                let ch = getch();
+                let mut ch;
+                loop {
+                    ch = getch();
+                    if ch == 0 {
+                        restore_to_kernel();
+                    } else {
+                        break;
+                    }
+                }
+                unsafe {
+                    // buf.add(offset).write_volatile(ch);
+                    let va = VirAddr::from(buf.add(offset) as usize);
+                    let offset = va.page_offset();
+                    let vpn = va.floor_to_vpn();
+                    let slice = &mut page_table.vpn_to_pte(vpn).unwrap().ppn().get_bytes_array()
+                        [offset..offset + 1];
+                    slice[0] = ch;
+                    cnt += 1;
+                }
             }
         }
         _ => panic!("unsupported fd type: {}", fd),
     }
+    RestoreBehavior::DirectReturn(cnt)
 }

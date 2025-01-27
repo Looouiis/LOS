@@ -22,7 +22,8 @@ pub fn syscall_service() {
             ) {
                 crate::process::RestoreBehavior::DirectReturn(res) => {
                     ctx.set_syscall_res(res);
-                    trap_return(false);
+                    // trap_return(false);
+                    trap_return();
                 }
                 crate::process::RestoreBehavior::Reschedule => {
                     reschedule();
@@ -50,4 +51,5 @@ pub fn syscall_service() {
             }
         }
     }
+    trap_return();
 }

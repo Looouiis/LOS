@@ -2,13 +2,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "连接并调试qemu（请先手动运行cargo",
+            "name": "连接并调试qemu(请先手动运行cargo xdebug)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/riscv64gc-unknown-none-elf/release/los",
             "miDebuggerServerAddress": "localhost:1234",
             "miDebuggerPath": "gdb",
-            // "preLaunchTask": "launch qemu",
             "cwd": "${fileDirname}",
             "args": [],
             "stopAtEntry": false,

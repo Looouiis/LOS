@@ -3,9 +3,7 @@ use core::arch::asm;
 use riscv::register::sstatus::Sstatus;
 
 use crate::{
-    arch_relate::to_token,
     config::{TRAMPOLINE, TRAP_CONTEXT},
-    mem::memory_set::KERNEL_SPACE,
     stack::KERNAL_STACK_SIZE,
 };
 
@@ -154,16 +152,16 @@ pub(crate) fn get_restore_va() -> usize {
     trap_restore as usize - trap_handler as usize + TRAMPOLINE
 }
 
-pub(crate) fn trap_return(is_kernel: bool) -> ! {
+pub(crate) fn trap_return(/* is_kernel: bool */) -> ! {
     let trap_cx_ptr;
     let satp;
-    if is_kernel {
-        trap_cx_ptr = core::ptr::addr_of!(PROGRAM_MANAGER.get().kernel_ctx) as usize;
-        satp = to_token(KERNEL_SPACE.get().page_table.address());
-    } else {
-        trap_cx_ptr = TRAP_CONTEXT;
-        satp = PROGRAM_MANAGER.get().get_current_token();
-    }
+    // if is_kernel {
+    // trap_cx_ptr = core::ptr::addr_of!(PROGRAM_MANAGER.get().kernel_ctx) as usize;
+    // satp = to_token(KERNEL_SPACE.get().page_table.address());
+    // } else {
+    trap_cx_ptr = TRAP_CONTEXT;
+    satp = PROGRAM_MANAGER.get().get_current_token();
+    // }
     let restore_va = get_restore_va();
     unsafe {
         asm!(
@@ -246,6 +244,7 @@ pub struct TrapContext {
 }
 
 impl TrapContext {
+    #[allow(unused)]
     pub(crate) fn new() -> Self {
         TrapContext {
             info: RegInfo::new(),
@@ -318,6 +317,7 @@ pub(crate) struct RegInfo {
 }
 
 impl RegInfo {
+    #[allow(unused)]
     fn new() -> Self {
         Self {
             x0: 0,
@@ -358,7 +358,7 @@ impl RegInfo {
 
 #[repr(C)]
 pub(crate) struct ProcessContext {
-    ra: usize,
+    pub ra: usize,
     reg: [usize; 13],
 }
 
@@ -368,5 +368,10 @@ impl ProcessContext {
             ra: 0,
             reg: [0; 13],
         }
+    }
+
+    pub(crate) fn init(&mut self, ra: usize, sp: usize) {
+        self.ra = ra;
+        self.reg[0] = sp;
     }
 }

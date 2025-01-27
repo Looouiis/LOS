@@ -32,6 +32,7 @@ SECTIONS
     __bss_start = .;
     .bss : {
         *(.bss .bss.*)
+        *(.sbss .sbss.*)
     }
     __bss_end = .;
     /DISCARD/ : {

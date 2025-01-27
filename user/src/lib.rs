@@ -1,9 +1,8 @@
 #![no_std]
 #![feature(linkage)]
 
-use core::{panic::PanicInfo, ptr};
-
 use allocator::{BuddyAllocator, HEAP, HEAP_SIZE};
+use core::{panic::PanicInfo, ptr};
 use syscall::{sys_exec, sys_exit, sys_fork, sys_task_info, sys_waitpid};
 
 #[macro_use]
@@ -11,6 +10,7 @@ pub mod io;
 pub mod allocator;
 pub mod syscall;
 
+#[global_allocator]
 static HEAP_ALLOCATOR: BuddyAllocator = BuddyAllocator::uninit();
 
 #[no_mangle]
