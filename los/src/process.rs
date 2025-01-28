@@ -23,7 +23,7 @@ use crate::{
     config::TRAP_CONTEXT,
     mem::{
         address::{PhyPageNum, VirAddr},
-        memory_set::{MapArea, MapPermission, MapType, MemorySet, KERNEL_SPACE},
+        memory_set::{MemorySet, KERNEL_SPACE},
     },
     stack::{KernelStack, KERNAL_STACK_SIZE},
 };
@@ -135,7 +135,7 @@ impl Process {
 
     pub(crate) fn new(elf_data: &'static [u8]) -> Arc<Mutex<Self>> {
         let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
-        let (mut memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
+        let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
         let trapctx_ppn = memory_set
             .page_table
             .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
@@ -148,15 +148,15 @@ impl Process {
         ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
         let kernel_stack =
             unsafe { alloc(Layout::from_size_align(size_of::<KernelStack>(), 4096).unwrap()) };
-        memory_set.push_area(
-            MapArea::new(
-                VirAddr::from(kernel_stack as usize),
-                VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
-                MapType::Identical,
-                MapPermission::R | MapPermission::W,
-            ),
-            None,
-        );
+        // memory_set.push_area(
+        //     MapArea::new(
+        //         VirAddr::from(kernel_stack as usize),
+        //         VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
+        //         MapType::Identical,
+        //         MapPermission::R | MapPermission::W,
+        //     ),
+        //     None,
+        // );
         ctx.kernel_sp = kernel_stack as usize + KERNAL_STACK_SIZE;
         let mut process_ctx = ProcessContext::new();
         process_ctx.init(trap_return as usize, ctx.kernel_sp);
@@ -208,7 +208,9 @@ impl Process {
     }
 
     pub(crate) fn fork(&mut self) -> Arc<Mutex<Self>> {
-        let mut memory_set = self.memory_set.fork();
+        // let mut memory_set = self.memory_set.fork();
+        let mut memory_set = MemorySet::empty();
+        memory_set.fork_from(&self.memory_set);
         memory_set.map_trampoline();
         let src = &mut (self.trapctx_ppn.get_bytes_array()[..size_of::<TrapContext>()]);
         let trapctx_ppn = memory_set
@@ -221,23 +223,23 @@ impl Process {
         let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
         let kernel_stack =
             unsafe { alloc(Layout::from_size_align(size_of::<KernelStack>(), 4096).unwrap()) };
-        memory_set.push_area(
-            MapArea::new(
-                VirAddr::from(kernel_stack as usize),
-                VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
-                MapType::Identical,
-                MapPermission::R | MapPermission::W,
-            ),
-            None,
-        );
-        unsafe {
-            let src = core::slice::from_raw_parts(
-                (ctx.kernel_sp - KERNAL_STACK_SIZE) as *const u8,
-                KERNAL_STACK_SIZE,
-            );
-            let dst = core::slice::from_raw_parts_mut(kernel_stack, KERNAL_STACK_SIZE);
-            dst.copy_from_slice(src);
-        }
+        // memory_set.push_area(
+        //     MapArea::new(
+        //         VirAddr::from(kernel_stack as usize),
+        //         VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
+        //         MapType::Identical,
+        //         MapPermission::R | MapPermission::W,
+        //     ),
+        //     None,
+        // );
+        // unsafe {     // fork时不主动涉及任务切换，所以kernel_stack会被清空，也就不需要拷贝kernel_stack中的内容了
+        //     let src = core::slice::from_raw_parts(
+        //         (ctx.kernel_sp - KERNAL_STACK_SIZE) as *const u8,
+        //         KERNAL_STACK_SIZE,
+        //     );
+        //     let dst = core::slice::from_raw_parts_mut(kernel_stack, KERNAL_STACK_SIZE);
+        //     dst.copy_from_slice(src);
+        // }
         ctx.kernel_sp = kernel_stack as usize + KERNAL_STACK_SIZE;
         ctx.info.a0 = 0;
         let mut process_ctx = ProcessContext::new();
@@ -383,7 +385,7 @@ impl ProgramManager {
     }
 
     // 将program_manager内部的指针转移指向下一个program
-    fn nxt_program(&mut self) -> bool {
+    fn nxt_program(&mut self) -> *const ProcessContext {
         for _i in 0..self.process.len() {
             match self.process.pop_front() {
                 Some(p) => {
@@ -406,13 +408,21 @@ impl ProgramManager {
                         None => {}
                     }
                     self.current_program = Some(p);
-                    return true;
+                    return &(self.current_program.as_ref().unwrap().lock().process_ctx)
+                        as *const ProcessContext;
                 }
-                None => return self.current_program.is_some(),
+                None => {}
             }
         }
-        return self.current_program.is_some()
-            && self.current_program.as_ref().unwrap().lock().status == State::Ready;
+        if self.current_program.is_some()
+            && self.current_program.as_ref().unwrap().lock().status == State::Ready
+        {
+            return &(self.current_program.as_ref().unwrap().lock().process_ctx)
+                as *const ProcessContext;
+        } else {
+            let res = &self.kernel_ctx as *const ProcessContext;
+            return res;
+        }
     }
 
     pub(crate) fn get_process(&self) -> &Option<Arc<Mutex<Process>>> {
@@ -420,7 +430,6 @@ impl ProgramManager {
     }
 
     pub(crate) fn exit_current(&mut self) {
-        // 看起来Option.take的开销还是挺大的，有优化的潜力
         let exited = self.current_program.as_mut().unwrap();
         exited.lock().status = State::Exited;
         // drop(exited);
@@ -472,35 +481,36 @@ impl<T> Drop for ArcCell<T> {
 #[inline]
 pub(crate) fn reschedule() {
     set_nxt_trigger();
-    restore_to_kernel();
+    switch_task();
 }
 
 pub(crate) fn run_program() -> usize {
     let mut entered_num = 0;
-    loop {
-        unsafe {
-            arch_relate::run_program();
-            entered_num += 1;
-        }
-        let mut mgr = PROGRAM_MANAGER.get();
-        if !mgr.nxt_program() {
-            break;
-        }
-        drop(mgr);
+    // loop {
+    unsafe {
+        arch_relate::run_program();
+        entered_num += 1;
     }
+    // let mut mgr = PROGRAM_MANAGER.get();
+    // if !mgr.nxt_program() {
+    // break;
+    // }
+    // drop(mgr);
+    // }
     trace!("run_program trace");
     entered_num
 }
 
 #[inline]
-pub(crate) fn restore_to_kernel() {
-    let mgr = PROGRAM_MANAGER.get();
+pub(crate) fn switch_task() {
+    let mut mgr = PROGRAM_MANAGER.get();
     let guard = mgr.current_program.as_ref().unwrap().lock();
-    let ker_ctx = core::ptr::addr_of!(mgr.kernel_ctx);
-    let usr_ctx = core::ptr::addr_of!(guard.process_ctx);
+    let cur_ctx = core::ptr::addr_of!(guard.process_ctx);
     drop(guard);
+    let nxt_ctx = mgr.nxt_program();
+    assert!(!mgr.current_program.as_ref().unwrap().is_locked());
     drop(mgr);
-    unsafe { switch(usr_ctx, ker_ctx) };
+    unsafe { switch(cur_ctx, nxt_ctx) };
 }
 
 pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> RestoreBehavior {

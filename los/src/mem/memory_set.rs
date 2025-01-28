@@ -329,12 +329,10 @@ impl MemorySet {
     }
 
     // 没有设计为Clone trait，因为他涉及到数据的深拷贝
-    pub(crate) fn fork(&self) -> Self {
-        let mut memory_set = Self::empty();
-        for area in &self.areas {
-            memory_set.fork_area(area);
+    pub(crate) fn fork_from(&mut self, other: &MemorySet) {
+        for area in &other.areas {
+            self.fork_area(area);
         }
-        memory_set
     }
 
     pub(crate) fn activate(&self) {

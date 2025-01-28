@@ -7,7 +7,7 @@ use crate::{
         address::{StepByOne, VirAddr},
         page_table::ROTable,
     },
-    process::{restore_to_kernel, RestoreBehavior},
+    process::{switch_task, RestoreBehavior},
     PROGRAM_MANAGER,
 };
 
@@ -118,7 +118,7 @@ pub(crate) fn sys_read(fd: usize, buf: *mut u8, len: usize) -> RestoreBehavior {
                 loop {
                     ch = getch();
                     if ch == 0 {
-                        restore_to_kernel();
+                        switch_task();
                     } else {
                         break;
                     }

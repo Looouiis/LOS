@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use crate::{
     arch_relate::disable_kernel_interrupt,
     io::get_user_slice,
-    process::{reschedule, restore_to_kernel, PROGRAM_MANAGER},
+    process::{reschedule, switch_task, PROGRAM_MANAGER},
 };
 
 use super::{Process, RestoreBehavior};

@@ -1,6 +1,6 @@
 use crate::{
     arch_relate::trap::trap_return,
-    process::{reschedule, restore_to_kernel, syscall_fn::exit},
+    process::{reschedule, switch_task, syscall_fn::exit},
     syscall::syscall,
 };
 use riscv::register::{
@@ -42,7 +42,7 @@ pub fn syscall_service() {
             if sstatus::read().spp() == sstatus::SPP::Supervisor {
                 crate::temp_test::trigger_kernel_interrupt();
                 set_nxt_trigger();
-                restore_to_kernel();
+                switch_task();
             } else if Interrupt::SupervisorTimer == i {
                 reschedule();
             } else {
