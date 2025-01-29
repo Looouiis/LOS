@@ -18,7 +18,7 @@ pub(crate) fn sys_yield() -> RestoreBehavior {
 #[inline]
 pub(crate) fn exit(code: usize) -> ! {
     log!("Program exit with {}", code);
-    PROGRAM_MANAGER.get().exit_current();
+    PROGRAM_MANAGER.get().exit_current(code as i32);
     reschedule();
     unreachable!()
 }
@@ -28,7 +28,7 @@ pub(crate) fn sys_fork() -> RestoreBehavior {
     let pid;
     match mgr.current_program.as_mut() {
         Some(process) => {
-            let forked = process.lock().fork();
+            let forked = Process::fork(&process);
             pid = *(forked.lock().pid);
             mgr.process.push_front(forked);
         }

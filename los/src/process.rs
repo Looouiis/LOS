@@ -2,7 +2,7 @@ use alloc::{
     alloc::{alloc, dealloc},
     collections::{btree_map::BTreeMap, linked_list::LinkedList},
     string::String,
-    sync::Arc,
+    sync::{Arc, Weak},
     vec::Vec,
 };
 use core::{
@@ -22,8 +22,9 @@ use crate::{
     },
     config::TRAP_CONTEXT,
     mem::{
-        address::{PhyPageNum, VirAddr},
+        address::{PhyAddr, PhyPageNum, VirAddr},
         memory_set::{MemorySet, KERNEL_SPACE},
+        page_table::ROTable,
     },
     stack::{KernelStack, KERNAL_STACK_SIZE},
 };
@@ -69,6 +70,18 @@ pub(crate) struct PidWrapper(usize);
 impl Drop for PidWrapper {
     fn drop(&mut self) {
         PID_ALLOCATOR.lock().dealloc(self.0);
+    }
+}
+
+impl From<&PidWrapper> for isize {
+    fn from(value: &PidWrapper) -> Self {
+        value.0 as isize
+    }
+}
+
+impl From<&PidWrapper> for usize {
+    fn from(value: &PidWrapper) -> Self {
+        value.0
     }
 }
 
@@ -122,6 +135,10 @@ pub(crate) struct Process {
     pub(crate) memory_set: MemorySet,
     pub(crate) trapctx_ppn: PhyPageNum,
     pub(crate) process_ctx: ProcessContext,
+    pub(crate) children: Vec<Weak<Mutex<Process>>>,
+    #[allow(unused)]
+    pub(crate) father: Option<Weak<Mutex<Process>>>,
+    pub(crate) exit_code: Option<i32>,
 }
 
 impl Process {
@@ -166,6 +183,9 @@ impl Process {
             memory_set,
             trapctx_ppn,
             process_ctx,
+            children: Vec::new(),
+            father: None,
+            exit_code: None,
         }))
     }
 
@@ -207,12 +227,13 @@ impl Process {
         self.trapctx_ppn = trapctx_ppn;
     }
 
-    pub(crate) fn fork(&mut self) -> Arc<Mutex<Self>> {
+    pub(crate) fn fork(from: &Arc<Mutex<Self>>) -> Arc<Mutex<Self>> {
         // let mut memory_set = self.memory_set.fork();
+        let mut guard = from.lock();
         let mut memory_set = MemorySet::empty();
-        memory_set.fork_from(&self.memory_set);
+        memory_set.fork_from(&guard.memory_set);
         memory_set.map_trampoline();
-        let src = &mut (self.trapctx_ppn.get_bytes_array()[..size_of::<TrapContext>()]);
+        let src = &mut (guard.trapctx_ppn.get_bytes_array()[..size_of::<TrapContext>()]);
         let trapctx_ppn = memory_set
             .page_table
             .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
@@ -244,13 +265,94 @@ impl Process {
         ctx.info.a0 = 0;
         let mut process_ctx = ProcessContext::new();
         process_ctx.init(trap_return as usize, ctx.kernel_sp);
-        Arc::new(Mutex::new(Self {
+        let status = guard.status;
+        let res = Arc::new(Mutex::new(Self {
             pid: PID_ALLOCATOR.lock().alloc().unwrap(),
-            status: self.status,
+            status,
             memory_set,
             trapctx_ppn,
             process_ctx,
-        }))
+            children: Vec::new(),
+            father: Some(Arc::downgrade(from)),
+            exit_code: None,
+        }));
+        guard.children.push(Arc::downgrade(&res));
+        res
+    }
+}
+
+pub(crate) fn sys_waitpid(pid: isize, exit_code: *mut i32) -> RestoreBehavior {
+    let mut mgr = PROGRAM_MANAGER.get();
+    let cur = mgr.current_program.as_ref().unwrap().clone();
+    let mut cur_guard = cur.lock();
+    if cur_guard.children.is_empty() {
+        return RestoreBehavior::DirectReturn(-1isize as usize);
+    }
+    match pid {
+        -1 => {
+            let mut find_res = None;
+            for (index, process) in cur_guard.children.iter().enumerate() {
+                let arc = process.upgrade().unwrap();
+                let guard = arc.lock();
+                if guard.status == State::Exited {
+                    let pid = guard.pid.0;
+                    drop(guard);
+                    if mgr.drop_process(pid).is_some() {
+                        find_res = Some((pid, index));
+                    }
+                    break;
+                }
+            }
+            match find_res {
+                Some((pid, index)) => {
+                    cur_guard.children.swap_remove(index);
+                    return RestoreBehavior::DirectReturn(pid);
+                }
+                None => {
+                    return RestoreBehavior::DirectReturn(-2isize as usize);
+                }
+            }
+        }
+        pid => {
+            drop(mgr);
+            for (index, process) in cur_guard.children.iter().enumerate() {
+                let arc = process.upgrade().unwrap();
+                let guard = arc.lock();
+                let tar_pid = guard.pid.0;
+                if tar_pid == pid as usize {
+                    drop(guard);
+                    loop {
+                        let status = arc.lock().status;
+                        if status != State::Exited {
+                            drop(cur_guard);
+                            switch_task();
+                            cur_guard = cur.lock();
+                        } else {
+                            match PROGRAM_MANAGER.get().drop_process(tar_pid) {
+                                Some((res, token)) => {
+                                    if !exit_code.is_null() {
+                                        let page_table = ROTable::from_token(token);
+                                        let va = VirAddr::from(exit_code as usize);
+                                        let offset = va.page_offset();
+                                        let vpn = va.floor_to_vpn();
+                                        let pa: PhyAddr =
+                                            page_table.vpn_to_pte(vpn).unwrap().ppn().into();
+                                        let ptr: usize = usize::from(pa) + offset;
+                                        unsafe { (ptr as *mut i32).write_volatile(res) };
+                                    }
+                                    cur_guard.children.swap_remove(index);
+                                    return RestoreBehavior::DirectReturn(tar_pid.into());
+                                }
+                                None => {
+                                    panic!("internal error");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return RestoreBehavior::DirectReturn(-1isize as usize);
+        }
     }
 }
 
@@ -429,9 +531,11 @@ impl ProgramManager {
         &self.current_program
     }
 
-    pub(crate) fn exit_current(&mut self) {
+    pub(crate) fn exit_current(&mut self, exit_code: i32) {
         let exited = self.current_program.as_mut().unwrap();
-        exited.lock().status = State::Exited;
+        let mut guard = exited.lock();
+        guard.status = State::Exited;
+        guard.exit_code = Some(exit_code);
         // drop(exited);
         // assert!(self.current_program.is_none());
     }
@@ -446,6 +550,22 @@ impl ProgramManager {
             .unwrap()
             .lock()
             .get_trap_context()
+    }
+
+    pub(crate) fn drop_process(&mut self, tar_pid: usize) -> Option<(i32, usize)> {
+        for _i in 0..self.process.len() {
+            let process = self.process.pop_front().unwrap();
+            let guard = process.lock();
+            if guard.pid.0 == tar_pid {
+                let res = guard.exit_code.unwrap();
+                let token = guard.get_token();
+                return Some((res, token));
+            } else {
+                drop(guard);
+                self.process.push_back(process);
+            }
+        }
+        None
     }
 }
 

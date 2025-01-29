@@ -15,10 +15,10 @@ fn main() -> i32 {
             let mut exit_code = 0;
             let pid = wait(&mut exit_code);
             if pid == -1 {
-                sys_yield();
-                continue;
+                println!("initproc: all process finished");
+                break;
             }
-            println!("process {pid} exit with {exit_code}");
+            println!("initproc: process {pid} exit with {exit_code}");
         }
     }
     0

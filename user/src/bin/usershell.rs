@@ -34,7 +34,7 @@ fn main() -> i32 {
                 } else {
                     let mut exit_code = 0;
                     waitpid(pid, &mut exit_code);
-                    println!("Process exit with {exit_code}");
+                    println!("usershell: process exit with {exit_code}");
                     println!();
                     print!("> ");
                 }
