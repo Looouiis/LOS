@@ -103,7 +103,7 @@ impl PidAllocator {
     pub(crate) const fn new() -> Self {
         Self {
             start: 0,
-            end: usize::MAX,
+            end: usize::MAX - 1, // usize::MAX（即-1）被waitpid使用了
             recycled: Vec::new(),
         }
     }
@@ -329,8 +329,9 @@ pub(crate) fn sys_waitpid(pid: isize, exit_code: *mut i32) -> RestoreBehavior {
                             cur_guard = cur.lock();
                         } else {
                             match PROGRAM_MANAGER.get().drop_process(tar_pid) {
-                                Some((res, token)) => {
+                                Some(res) => {
                                     if !exit_code.is_null() {
+                                        let token = cur_guard.get_token();
                                         let page_table = ROTable::from_token(token);
                                         let va = VirAddr::from(exit_code as usize);
                                         let offset = va.page_offset();
@@ -471,7 +472,10 @@ impl ProgramManager {
     pub(crate) fn get_elf_by_name(&self, name: &str) -> Option<&'static [u8]> {
         match self.name_map.get(name) {
             Some(index) => unsafe { Some(self.get_program_elf_bytes(*index)) },
-            None => None,
+            None => {
+                log!("can't find name {name}");
+                None
+            },
         }
     }
 
@@ -535,6 +539,17 @@ impl ProgramManager {
         let exited = self.current_program.as_mut().unwrap();
         let mut guard = exited.lock();
         guard.status = State::Exited;
+        if guard.pid.0 != 0 {
+            let initproc = self
+                .process
+                .iter()
+                .find(|item| match item.try_lock() {
+                    Some(guard) => return guard.pid.0 == 0,
+                    None => return false,
+                })
+                .unwrap();
+            initproc.lock().children.append(&mut guard.children);
+        }
         guard.exit_code = Some(exit_code);
         // drop(exited);
         // assert!(self.current_program.is_none());
@@ -552,14 +567,12 @@ impl ProgramManager {
             .get_trap_context()
     }
 
-    pub(crate) fn drop_process(&mut self, tar_pid: usize) -> Option<(i32, usize)> {
+    pub(crate) fn drop_process(&mut self, tar_pid: usize) -> Option<i32> {
         for _i in 0..self.process.len() {
             let process = self.process.pop_front().unwrap();
             let guard = process.lock();
             if guard.pid.0 == tar_pid {
-                let res = guard.exit_code.unwrap();
-                let token = guard.get_token();
-                return Some((res, token));
+                return guard.exit_code;
             } else {
                 drop(guard);
                 self.process.push_back(process);

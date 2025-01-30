@@ -16,7 +16,7 @@ const BS: u8 = 0x08u8;
 #[no_mangle]
 fn main() -> i32 {
     let mut line: String = String::new();
-    print!("> ");
+    print!("usershell> ");
     loop {
         let c = get_char();
         match c {
@@ -28,15 +28,14 @@ fn main() -> i32 {
                 let pid = fork();
                 if pid == 0 {
                     if exec(line.as_str()) == -1 {
-                        println!("Cann't find process");
+                        println!("usershell: cann't find process");
                         return 0;
                     }
                 } else {
                     let mut exit_code = 0;
                     waitpid(pid, &mut exit_code);
-                    println!("usershell: process exit with {exit_code}");
-                    println!();
-                    print!("> ");
+                    println!("usershell: process {pid} exit with {exit_code}");
+                    print!("usershell> ");
                 }
                 line.clear();
             }
