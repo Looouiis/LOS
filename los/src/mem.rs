@@ -17,12 +17,10 @@ extern "C" {
 
 pub(crate) fn init() {
     HEAP_ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE);
-    trace!("Buddy System init");
     FRAME_ALLOCATOR.lock().init(
         PhyAddr::from(__kernel_end as usize).ceil_to_ppn(),
         PhyAddr::from(MEMORY_END).floor_to_ppn(),
     );
-    trace!("Frame Allocator init");
     KERNEL_SPACE.get().activate();
-    trace!("Kernel Space activated");
+    trace!("Address Space init");
 }

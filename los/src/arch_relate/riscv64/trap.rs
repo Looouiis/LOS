@@ -7,7 +7,7 @@ use crate::{
     stack::KERNAL_STACK_SIZE,
 };
 
-use super::PROGRAM_MANAGER;
+use super::PROCESS_MANAGER;
 
 #[cfg(target_pointer_width = "32")]
 #[macro_use]
@@ -152,16 +152,11 @@ pub(crate) fn get_restore_va() -> usize {
     trap_restore as usize - trap_handler as usize + TRAMPOLINE
 }
 
-pub(crate) fn trap_return(/* is_kernel: bool */) -> ! {
+pub(crate) fn trap_return() -> ! {
     let trap_cx_ptr;
     let satp;
-    // if is_kernel {
-    // trap_cx_ptr = core::ptr::addr_of!(PROGRAM_MANAGER.get().kernel_ctx) as usize;
-    // satp = to_token(KERNEL_SPACE.get().page_table.address());
-    // } else {
     trap_cx_ptr = TRAP_CONTEXT;
-    satp = PROGRAM_MANAGER.get().get_current_token();
-    // }
+    satp = PROCESS_MANAGER.get().get_current_token();
     let restore_va = get_restore_va();
     unsafe {
         asm!(

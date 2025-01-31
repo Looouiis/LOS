@@ -204,15 +204,6 @@ impl MemorySet {
         let bss_start_with_stack = __bss_start_with_stack as usize;
         let bss_end = __bss_end as usize;
         let kernel_end = __kernel_end as usize;
-        trace!(".text\t\t[{:#x}, {:#x})", text_start, text_end);
-        trace!(".rodata\t[{:#x}, {:#x})", rodata_start, rodata_end);
-        trace!(".data\t\t[{:#x}, {:#x})", data_start, data_end);
-        trace!(
-            ".bss\t\t[{:#x}, {:#x})",
-            bss_start_with_stack as usize,
-            bss_end as usize
-        );
-        trace!(".memory\t[{:#x}, {:#x})", __kernel_end as usize, MEMORY_END);
         let mut kernel_memory_set = Self::empty();
         kernel_memory_set.map_trampoline();
         kernel_memory_set.push_area(

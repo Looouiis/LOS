@@ -2,7 +2,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use super::{
-    address::{PhyPageNum, VirPageNum},
+    address::{PhyAddr, PhyPageNum, VirAddr, VirPageNum},
     allocator::{frame::FrameTracker, FRAME_ALLOCATOR},
 };
 
@@ -95,6 +95,14 @@ impl ROTable {
 
     pub(crate) fn vpn_to_pte(&self, vpn: VirPageNum) -> Option<PageTableEntry> {
         self.find_pte(vpn).map(|pte| pte.clone())
+    }
+
+    pub(crate) fn va_to_pa(&self, va: VirAddr) -> Option<PhyAddr> {
+        let offset = va.page_offset();
+        let vpn = va.floor_to_vpn();
+        let pa_base: PhyAddr = self.vpn_to_pte(vpn).unwrap().ppn().into();
+        let pa = PhyAddr::from(usize::from(pa_base) + offset);
+        Some(pa)
     }
 }
 

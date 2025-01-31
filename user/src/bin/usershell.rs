@@ -41,6 +41,7 @@ fn main() -> i32 {
             }
             BS | DL => {
                 print!("{} {}", BS as char, BS as char);
+                line.pop();
             }
             ch => {
                 let char = ch as char;
@@ -49,5 +50,5 @@ fn main() -> i32 {
             }
         }
     }
-    0
+    2
 }

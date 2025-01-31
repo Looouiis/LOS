@@ -9,7 +9,7 @@ extern crate user;
 #[no_mangle]
 fn main() -> i32 {
     if fork() == 0 {
-        println!("exit_test: initproc should manage this child process as its child");
+        println!("exit_test: initproc should manage this child process as its own child");
         for _i in 0..90000 {
             sys_yield();
         }
@@ -17,5 +17,5 @@ fn main() -> i32 {
     } else {
         println!("exit_test: father process will exit immediately");
     }
-    0
+    3
 }

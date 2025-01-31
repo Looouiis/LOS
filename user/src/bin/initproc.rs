@@ -21,5 +21,5 @@ fn main() -> i32 {
             println!("initproc: process {pid} exit with {exit_code}");
         }
     }
-    0
+    1
 }

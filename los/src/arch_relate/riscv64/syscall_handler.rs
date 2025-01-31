@@ -8,11 +8,11 @@ use riscv::register::{
     sstatus,
 };
 
-use super::{timer::set_nxt_trigger, PROGRAM_MANAGER};
+use super::{timer::set_nxt_trigger, PROCESS_MANAGER};
 
 #[no_mangle]
 pub fn syscall_service() {
-    let ctx = PROGRAM_MANAGER.get().get_current_trap_context();
+    let ctx = PROCESS_MANAGER.get().get_current_trap_context();
     match scause::read().cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             ctx.ret_at_nxt();

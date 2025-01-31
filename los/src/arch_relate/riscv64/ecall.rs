@@ -6,10 +6,10 @@ pub fn putch(c: usize) {
 }
 
 pub fn getch() -> u8 {
-    let ch = [0u8; 1];
+    let ch = 0u8;
     let ptr = &ch as *const u8 as usize;
     sbi_rt::console_read(Physical::new(1, ptr, ptr + 1));
-    ch[0]
+    ch
 }
 
 pub fn reset(failure: bool) -> ! {

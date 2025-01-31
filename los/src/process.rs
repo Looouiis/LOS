@@ -22,7 +22,7 @@ use crate::{
     },
     config::TRAP_CONTEXT,
     mem::{
-        address::{PhyAddr, PhyPageNum, VirAddr},
+        address::{PhyPageNum, VirAddr},
         memory_set::{MemorySet, KERNEL_SPACE},
         page_table::ROTable,
     },
@@ -37,23 +37,20 @@ extern "C" {
     fn _program_names();
 }
 
-// pub(crate) const MAX_PROGRAM_NUM: usize = 20;
-
 pub(crate) enum RestoreBehavior {
     DirectReturn(usize),
     Reschedule,
 }
 
 lazy_static! {
-    pub(crate) static ref PROGRAM_MANAGER: ArcCell<ProgramManager> = unsafe {
+    pub(crate) static ref PROCESS_MANAGER: ArcCell<ProcessManager> = unsafe {
         ArcCell::new({
             let ptr = _num_program as usize as *const usize;
             let program_num = ptr.read_volatile();
-            ProgramManager {
+            ProcessManager {
                 program_num,
                 current_program: None,
                 process: LinkedList::new(),
-                // kernel_ctx: TrapContext::new(),
                 kernel_ctx: ProcessContext::new(),
                 name_map: BTreeMap::new(),
                 kernel_token: 0,
@@ -165,15 +162,6 @@ impl Process {
         ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
         let kernel_stack =
             unsafe { alloc(Layout::from_size_align(size_of::<KernelStack>(), 4096).unwrap()) };
-        // memory_set.push_area(
-        //     MapArea::new(
-        //         VirAddr::from(kernel_stack as usize),
-        //         VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
-        //         MapType::Identical,
-        //         MapPermission::R | MapPermission::W,
-        //     ),
-        //     None,
-        // );
         ctx.kernel_sp = kernel_stack as usize + KERNAL_STACK_SIZE;
         let mut process_ctx = ProcessContext::new();
         process_ctx.init(trap_return as usize, ctx.kernel_sp);
@@ -210,25 +198,13 @@ impl Process {
         ctx.info.sp = user_sp_top_va;
         ctx.kernel_token = kernel_token;
         ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
-        // let kernel_stack = unsafe { alloc(Layout::from_size_align(size_of::<KernelStack>(), 4096).unwrap()) };
-        // memory_set.push_area(
-        //     MapArea::new(
-        //         VirAddr::from(kernel_stack as usize),
-        //         VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
-        //         MapType::Identical,
-        //         MapPermission::R | MapPermission::W,
-        //     ),
-        //     None,
-        // );
         ctx.kernel_sp = kernel_stack_top;
-        // ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
         self.status = State::Ready;
         self.memory_set = memory_set;
         self.trapctx_ppn = trapctx_ppn;
     }
 
     pub(crate) fn fork(from: &Arc<Mutex<Self>>) -> Arc<Mutex<Self>> {
-        // let mut memory_set = self.memory_set.fork();
         let mut guard = from.lock();
         let mut memory_set = MemorySet::empty();
         memory_set.fork_from(&guard.memory_set);
@@ -244,23 +220,6 @@ impl Process {
         let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
         let kernel_stack =
             unsafe { alloc(Layout::from_size_align(size_of::<KernelStack>(), 4096).unwrap()) };
-        // memory_set.push_area(
-        //     MapArea::new(
-        //         VirAddr::from(kernel_stack as usize),
-        //         VirAddr::from(kernel_stack as usize + KERNAL_STACK_SIZE),
-        //         MapType::Identical,
-        //         MapPermission::R | MapPermission::W,
-        //     ),
-        //     None,
-        // );
-        // unsafe {     // fork时不主动涉及任务切换，所以kernel_stack会被清空，也就不需要拷贝kernel_stack中的内容了
-        //     let src = core::slice::from_raw_parts(
-        //         (ctx.kernel_sp - KERNAL_STACK_SIZE) as *const u8,
-        //         KERNAL_STACK_SIZE,
-        //     );
-        //     let dst = core::slice::from_raw_parts_mut(kernel_stack, KERNAL_STACK_SIZE);
-        //     dst.copy_from_slice(src);
-        // }
         ctx.kernel_sp = kernel_stack as usize + KERNAL_STACK_SIZE;
         ctx.info.a0 = 0;
         let mut process_ctx = ProcessContext::new();
@@ -282,9 +241,11 @@ impl Process {
 }
 
 pub(crate) fn sys_waitpid(pid: isize, exit_code: *mut i32) -> RestoreBehavior {
-    let mut mgr = PROGRAM_MANAGER.get();
+    let mut mgr = PROCESS_MANAGER.get();
     let cur = mgr.current_program.as_ref().unwrap().clone();
     let mut cur_guard = cur.lock();
+    let token = cur_guard.get_token();
+    let page_table = ROTable::from_token(token);
     if cur_guard.children.is_empty() {
         return RestoreBehavior::DirectReturn(-1isize as usize);
     }
@@ -297,15 +258,25 @@ pub(crate) fn sys_waitpid(pid: isize, exit_code: *mut i32) -> RestoreBehavior {
                 if guard.status == State::Exited {
                     let pid = guard.pid.0;
                     drop(guard);
-                    if mgr.drop_process(pid).is_some() {
-                        find_res = Some((pid, index));
+                    match mgr.drop_process(pid) {
+                        Some(res) => {
+                            find_res = Some((pid, index, res));
+                        }
+                        None => {
+                            panic!("internal error");
+                        }
                     }
                     break;
                 }
             }
             match find_res {
-                Some((pid, index)) => {
+                Some((pid, index, res)) => {
                     cur_guard.children.swap_remove(index);
+                    if !exit_code.is_null() {
+                        let va = VirAddr::from(exit_code as usize);
+                        let ptr: usize = page_table.va_to_pa(va).unwrap().into();
+                        unsafe { (ptr as *mut i32).write_volatile(res) };
+                    }
                     return RestoreBehavior::DirectReturn(pid);
                 }
                 None => {
@@ -328,17 +299,11 @@ pub(crate) fn sys_waitpid(pid: isize, exit_code: *mut i32) -> RestoreBehavior {
                             switch_task();
                             cur_guard = cur.lock();
                         } else {
-                            match PROGRAM_MANAGER.get().drop_process(tar_pid) {
+                            match PROCESS_MANAGER.get().drop_process(tar_pid) {
                                 Some(res) => {
                                     if !exit_code.is_null() {
-                                        let token = cur_guard.get_token();
-                                        let page_table = ROTable::from_token(token);
                                         let va = VirAddr::from(exit_code as usize);
-                                        let offset = va.page_offset();
-                                        let vpn = va.floor_to_vpn();
-                                        let pa: PhyAddr =
-                                            page_table.vpn_to_pte(vpn).unwrap().ppn().into();
-                                        let ptr: usize = usize::from(pa) + offset;
+                                        let ptr: usize = page_table.va_to_pa(va).unwrap().into();
                                         unsafe { (ptr as *mut i32).write_volatile(res) };
                                     }
                                     cur_guard.children.swap_remove(index);
@@ -379,17 +344,16 @@ pub(crate) enum State {
     Exited,
 }
 
-pub(crate) struct ProgramManager {
+pub(crate) struct ProcessManager {
     program_num: usize,
     current_program: Option<Arc<Mutex<Process>>>,
     process: LinkedList<Arc<Mutex<Process>>>,
-    // pub(crate) kernel_ctx: TrapContext,
     pub(crate) kernel_ctx: ProcessContext,
     name_map: BTreeMap<String, usize>,
     kernel_token: usize,
 }
 
-impl ProgramManager {
+impl ProcessManager {
     pub fn print_info(&self) {
         log!("Program_num: {}", self.program_num);
     }
@@ -413,47 +377,12 @@ impl ProgramManager {
         }
         let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
         self.kernel_token = kernel_token;
-        // 进程相关
-        // let kernel_satp = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
-        // for i in 0..self.program_num {
-        //     let (memory_set, user_sp_top_va, entry_point) =
-        //         MemorySet::from_elf(unsafe { self.get_program_elf_bytes(i) });
-        //     let trapctx_ppn = memory_set
-        //         .page_table
-        //         .vpn_to_pte(VirAddr::from(TRAP_CONTEXT).floor_to_vpn())
-        //         .unwrap()
-        //         .ppn();
-        //     let ctx: &mut TrapContext = trapctx_ppn.get_mut_data_at_start();
-        //     ctx.sepc = entry_point;
-        //     ctx.info.sp = user_sp_top_va;
-        //     ctx.kernel_satp = kernel_satp;
-        //     ctx.trap_handler = arch_relate::syscall_handler::syscall_service as usize;
-        //     ctx.kernel_sp = core::ptr::addr_of!(TRAP_STACK) as usize + KERNAL_STACK_SIZE;
-        //     let process = Process {
-        //         pid: PID_ALLOCATOR.lock().alloc().unwrap(),
-        //         status: State::Ready,
-        //         memory_set,
-        //         trapctx_ppn,
-        //     };
-        //     self.process.push_back(process);
-        // }
-        // let first = self.process.pop_front();
-        // *self.current_program.lock() = first;
     }
 
     pub(crate) fn add_task(&mut self, name: &str) {
         match self.get_elf_by_name(name) {
             Some(slice) => {
                 let process = Process::new(slice);
-                // let mut guard = self.current_program.lock();
-                // match guard.as_ref() {
-                //     Some(_) => {
-                //         self.process.push_back(process);
-                //     }
-                //     None => {
-                //         *guard = Some(process);
-                //     }
-                // }
                 match self.current_program {
                     Some(_) => {
                         self.process.push_back(process);
@@ -475,7 +404,7 @@ impl ProgramManager {
             None => {
                 log!("can't find name {name}");
                 None
-            },
+            }
         }
     }
 
@@ -495,14 +424,6 @@ impl ProgramManager {
         for _i in 0..self.process.len() {
             match self.process.pop_front() {
                 Some(p) => {
-                    // let mut guard = self.current_program.lock();
-                    // match guard.take() {
-                    //     Some(cur_process) => {
-                    //         self.process.push_back(cur_process);
-                    //     }
-                    //     None => {}
-                    // }
-                    // *guard = Some(p);
                     if p.lock().status != State::Ready {
                         self.process.push_back(p);
                         continue;
@@ -551,8 +472,6 @@ impl ProgramManager {
             initproc.lock().children.append(&mut guard.children);
         }
         guard.exit_code = Some(exit_code);
-        // drop(exited);
-        // assert!(self.current_program.is_none());
     }
 
     pub(crate) fn get_current_token(&self) -> usize {
@@ -619,24 +538,17 @@ pub(crate) fn reschedule() {
 
 pub(crate) fn run_program() -> usize {
     let mut entered_num = 0;
-    // loop {
     unsafe {
         arch_relate::run_program();
         entered_num += 1;
     }
-    // let mut mgr = PROGRAM_MANAGER.get();
-    // if !mgr.nxt_program() {
-    // break;
-    // }
-    // drop(mgr);
-    // }
     trace!("run_program trace");
     entered_num
 }
 
 #[inline]
 pub(crate) fn switch_task() {
-    let mut mgr = PROGRAM_MANAGER.get();
+    let mut mgr = PROCESS_MANAGER.get();
     let guard = mgr.current_program.as_ref().unwrap().lock();
     let cur_ctx = core::ptr::addr_of!(guard.process_ctx);
     drop(guard);
@@ -647,7 +559,7 @@ pub(crate) fn switch_task() {
 }
 
 pub(crate) fn write_task(id: *mut usize, name: *mut u8, len: usize) -> RestoreBehavior {
-    let mgr = PROGRAM_MANAGER.get();
+    let mgr = PROCESS_MANAGER.get();
     let str_name = "hahaha";
     let min_len = min(str_name.len(), len);
     unsafe {

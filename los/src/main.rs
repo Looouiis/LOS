@@ -24,8 +24,7 @@ mod temp_test;
 
 use core::arch::global_asm;
 use power::shutdown;
-use process::{run_program, PROGRAM_MANAGER};
-use temp_test::{frame_allocator_test, heap_test, remap_test};
+use process::{run_program, PROCESS_MANAGER};
 
 // 由于_start与架构相关，所以具体请移步arch_relate模块
 
@@ -59,13 +58,9 @@ fn rust_main() {
     mem::init();
     println!();
 
-    heap_test();
-    frame_allocator_test();
-    remap_test();
-
-    PROGRAM_MANAGER.get().print_info();
-    PROGRAM_MANAGER.get().init();
-    PROGRAM_MANAGER.get().add_task("initproc");
+    PROCESS_MANAGER.get().print_info();
+    PROCESS_MANAGER.get().init();
+    PROCESS_MANAGER.get().add_task("initproc");
     let num = run_program();
     log!("arch_relate::run_program entered {} times", num);
     trace!("main trace");

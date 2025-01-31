@@ -8,7 +8,7 @@ use crate::{
         page_table::ROTable,
     },
     process::{switch_task, RestoreBehavior},
-    PROGRAM_MANAGER,
+    PROCESS_MANAGER,
 };
 
 struct Stdout;
@@ -96,7 +96,7 @@ pub(crate) fn get_user_slice(token: usize, ptr: *const u8, len: usize) -> Vec<&'
 pub(crate) fn linux_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehavior {
     match fd {
         STDOUT => {
-            let slice = get_user_slice(PROGRAM_MANAGER.get().get_current_token(), buf, len);
+            let slice = get_user_slice(PROCESS_MANAGER.get().get_current_token(), buf, len);
             for s in slice {
                 let str = core::str::from_utf8(s).unwrap();
                 print!("{}", str);
@@ -111,7 +111,7 @@ pub(crate) fn sys_read(fd: usize, buf: *mut u8, len: usize) -> RestoreBehavior {
     let mut cnt = 0;
     match fd {
         STDIN => {
-            let token = PROGRAM_MANAGER.get().get_current_token();
+            let token = PROCESS_MANAGER.get().get_current_token();
             let page_table = ROTable::from_token(token);
             for offset in 0..len {
                 let mut ch;
@@ -124,15 +124,11 @@ pub(crate) fn sys_read(fd: usize, buf: *mut u8, len: usize) -> RestoreBehavior {
                     }
                 }
                 unsafe {
-                    // buf.add(offset).write_volatile(ch);
                     let va = VirAddr::from(buf.add(offset) as usize);
-                    let offset = va.page_offset();
-                    let vpn = va.floor_to_vpn();
-                    let slice = &mut page_table.vpn_to_pte(vpn).unwrap().ppn().get_bytes_array()
-                        [offset..offset + 1];
-                    slice[0] = ch;
-                    cnt += 1;
+                    let pa = page_table.va_to_pa(va).unwrap();
+                    (usize::from(pa) as *mut u8).write_volatile(ch);
                 }
+                cnt += 1;
             }
         }
         _ => panic!("unsupported fd type: {}", fd),
