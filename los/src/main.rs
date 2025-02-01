@@ -19,6 +19,7 @@ mod process;
 mod stack;
 mod syscall;
 mod timer;
+mod fs;
 
 mod temp_test;
 

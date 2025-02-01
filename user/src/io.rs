@@ -7,10 +7,6 @@ struct Stdout;
 const STDIN: usize = 0;
 const STDOUT: usize = 1;
 
-pub fn read(fd: usize, buffer: &mut [u8]) -> isize {
-    sys_read(fd, buffer)
-}
-
 pub fn get_char() -> u8 {
     let mut c = [0u8; 1];
     sys_read(STDIN, &mut c);

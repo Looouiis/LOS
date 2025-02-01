@@ -9,6 +9,7 @@ use syscall::{sys_exec, sys_exit, sys_fork, sys_task_info, sys_waitpid};
 pub mod io;
 pub mod allocator;
 pub mod syscall;
+pub mod fs;
 
 #[global_allocator]
 static HEAP_ALLOCATOR: BuddyAllocator = BuddyAllocator::uninit();
