@@ -12,6 +12,7 @@ mod io;
 #[macro_use]
 mod arch_relate;
 mod config;
+mod fs;
 mod mem;
 mod panic;
 mod power;
@@ -19,7 +20,6 @@ mod process;
 mod stack;
 mod syscall;
 mod timer;
-mod fs;
 
 mod temp_test;
 

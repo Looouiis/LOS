@@ -71,28 +71,31 @@ impl Drop for BlockCache {
 }
 
 pub(crate) struct BlockCacheManager {
-    queue: VecDeque<(usize, Arc<Mutex<BlockCache>>)>
+    queue: VecDeque<(usize, Arc<Mutex<BlockCache>>)>,
 }
 
 impl BlockCacheManager {
     pub(crate) const fn new() -> Self {
         Self {
-            queue: VecDeque::new()
+            queue: VecDeque::new(),
         }
     }
 
-    pub(crate) fn get_block(&mut self, id: usize, device: Arc<dyn BlockDevice>) -> Arc<Mutex<BlockCache>> {
-        match self.queue.iter().find(|pair| {
-            pair.0 == id
-        }) {
-            Some(pair) => {
-                pair.1.clone()
-            },
+    pub(crate) fn get_block(
+        &mut self,
+        id: usize,
+        device: Arc<dyn BlockDevice>,
+    ) -> Arc<Mutex<BlockCache>> {
+        match self.queue.iter().find(|pair| pair.0 == id) {
+            Some(pair) => pair.1.clone(),
             None => {
                 if self.queue.len() == CACHE_NUM {
-                    if let Some((index, _pair)) = self.queue.iter().enumerate().find(|(_, pair)| {
-                        Arc::strong_count(&pair.1) == 1
-                    }) {
+                    if let Some((index, _pair)) = self
+                        .queue
+                        .iter()
+                        .enumerate()
+                        .find(|(_, pair)| Arc::strong_count(&pair.1) == 1)
+                    {
                         self.queue.remove(index);
                     } else {
                         panic!("暂时先不负责");
@@ -101,7 +104,7 @@ impl BlockCacheManager {
                 let cache = Arc::new(Mutex::new(BlockCache::new(id, device)));
                 self.queue.push_back((id, cache.clone()));
                 cache
-            },
+            }
         }
     }
 }
