@@ -10,28 +10,28 @@ use super::{
 #[repr(C)]
 pub(crate) struct SuperBlock {
     magic: u32,
-    pub(crate) total_blocks_num: u32,
-    pub(crate) inode_bitmap_offset: u32,
-    pub(crate) inode_area_offset: u32,
-    pub(crate) data_bitmap_offset: u32,
-    pub(crate) data_area_offset: u32,
+    pub(crate) total_block_num: u32,
+    pub(crate) inode_bitmap_block_num: u32,
+    pub(crate) inode_area_block_num: u32,
+    pub(crate) data_bitmap_block_num: u32,
+    pub(crate) data_area_block_num: u32,
 }
 
 impl SuperBlock {
     pub(crate) fn init(
         &mut self,
-        total_blocks_num: u32,
-        inode_bitmap_offset: u32,
-        inode_area_offset: u32,
-        data_bitmap_offset: u32,
-        data_area_offset: u32,
+        total_block_num: u32,
+        inode_bitmap_block_num: u32,
+        inode_area_block_num: u32,
+        data_bitmap_block_num: u32,
+        data_area_block_num: u32,
     ) {
         self.magic = EFS_MAGIC;
-        self.total_blocks_num = total_blocks_num;
-        self.inode_bitmap_offset = inode_bitmap_offset;
-        self.inode_area_offset = inode_area_offset;
-        self.data_bitmap_offset = data_bitmap_offset;
-        self.data_area_offset = data_area_offset;
+        self.total_block_num = total_block_num;
+        self.inode_bitmap_block_num = inode_bitmap_block_num;
+        self.inode_area_block_num = inode_area_block_num;
+        self.data_bitmap_block_num = data_bitmap_block_num;
+        self.data_area_block_num = data_area_block_num;
     }
 
     pub(crate) fn is_valid(&self) -> bool {
@@ -39,7 +39,8 @@ impl SuperBlock {
     }
 }
 
-type BitMapBlock = [u64; 64];
+pub(crate) type BitMapBlock = [u64; 64];
+pub(crate) type DataBlock = [u8; BLOCK_SIZE];
 
 #[repr(C)]
 pub(crate) struct BitMap {
@@ -48,6 +49,13 @@ pub(crate) struct BitMap {
 }
 
 impl BitMap {
+    pub(crate) fn new(start_block_id: usize, block_num: usize) -> Self {
+        Self {
+            start_block_id,
+            block_num,
+        }
+    }
+
     pub(crate) fn init(&mut self, start: usize, num: usize) {
         self.start_block_id = start;
         self.block_num = num;
