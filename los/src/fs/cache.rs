@@ -107,4 +107,10 @@ impl BlockCacheManager {
             }
         }
     }
+
+    pub(crate) fn sync_all(&self) {
+        for (_, cache) in self.queue.iter() {
+            cache.lock().sync();
+        }
+    }
 }

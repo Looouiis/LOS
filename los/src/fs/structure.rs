@@ -61,7 +61,7 @@ impl BitMap {
         self.block_num = num;
     }
 
-    pub(crate) fn alloc(&mut self, device: Arc<dyn BlockDevice>) -> Option<usize> {
+    pub(crate) fn alloc(&mut self, device: &Arc<dyn BlockDevice>) -> Option<usize> {
         let mut guard = BLOCK_CACHE_MANAGER.lock();
         for i in 0..self.block_num {
             if let Some(res) = guard
@@ -70,11 +70,9 @@ impl BitMap {
                 .modify::<BitMapBlock, Option<usize>>(0, |block| {
                     for (index, u64unit) in block.iter_mut().enumerate() {
                         if *u64unit != u64::MAX {
-                            let lowbit = *u64unit & (!*u64unit + 1);
-                            *u64unit |= lowbit;
-                            return Some(
-                                63 - lowbit.trailing_zeros() as usize + i * 512 + index * 64,
-                            );
+                            let unit_offset = u64unit.trailing_ones();
+                            *u64unit |= 1u64 << unit_offset;
+                            return Some(i * 512 + index * 64 + unit_offset as usize);
                         }
                     }
                     None
@@ -86,14 +84,14 @@ impl BitMap {
         None
     }
 
-    pub(crate) fn dealloc(&mut self, device: Arc<dyn BlockDevice>, pos: usize) {
+    pub(crate) fn dealloc(&mut self, device: &Arc<dyn BlockDevice>, pos: usize) {
         let block_idx = pos / 512;
         let block_offset = pos % 512;
         let unit_idx = block_offset / 64;
-        let unit_offset = (block_offset % 64) as u64;
+        let unit_offset = block_offset % 64;
         BLOCK_CACHE_MANAGER
             .lock()
-            .get_block(self.start_block_id + block_idx, device)
+            .get_block(self.start_block_id + block_idx, device.clone())
             .lock()
             .modify(0, |block: &mut BitMapBlock| {
                 assert!(block[unit_idx] & (1u64 << unit_offset) > 0);
