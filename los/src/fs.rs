@@ -2,7 +2,7 @@ use alloc::sync::Arc;
 use cache::{BlockDevice, BLOCK_CACHE_MANAGER};
 use config::BLOCK_SIZE;
 use spin::mutex::Mutex;
-use structure::{BitMap, DataBlock, DiskInode, InodeType, SuperBlock};
+use structure::{BitMap, DataBlock, DiskInode, Inode, InodeType, SuperBlock};
 
 pub mod cache;
 pub mod config;
@@ -66,7 +66,7 @@ impl FileSystem {
             data_area_start_block: (1 + inode_total_block_num + data_bitmap_block_num) as u32,
         };
         assert!(fs.inode_bitmap.alloc(&device) == Some(0));
-        let (block_id, block_offset) = fs.get_disk_inode_pos_by_ptr(0);
+        let (block_id, block_offset) = fs.get_disk_inode_pos_by_id(0);
         guard
             .get_block(block_id as usize, device.clone())
             .lock()
@@ -77,27 +77,27 @@ impl FileSystem {
         Arc::new(Mutex::new(fs))
     }
 
-    fn get_disk_inode_pos_by_ptr(&self, inode_ptr: u32) -> (u32, usize) {
-        let bit_length = inode_ptr * size_of::<DiskInode>() as u32;
+    fn get_disk_inode_pos_by_id(&self, inode_id: u32) -> (u32, usize) {
+        let bit_length = inode_id * size_of::<DiskInode>() as u32;
         let block = self.inode_area_start_block + bit_length / BLOCK_SIZE as u32;
         let offset = bit_length as usize % BLOCK_SIZE;
         (block, offset)
     }
 
-    fn get_block_id_by_data_ptr(&self, data_block_ptr: u32) -> u32 {
-        self.data_area_start_block + data_block_ptr
+    fn get_block_id_by_data_id(&self, data_block_id: u32) -> u32 {
+        self.data_area_start_block + data_block_id
     }
 
-    fn alloc_inode_ptr(&mut self) -> u32 {
+    fn alloc_inode_id(&mut self) -> u32 {
         self.inode_bitmap.alloc(&self.device).unwrap() as u32
     }
 
-    fn alloc_data_ptr(&mut self) -> u32 {
+    fn alloc_data_id(&mut self) -> u32 {
         self.data_bitmap.alloc(&self.device).unwrap() as u32
     }
 
-    fn dealloc_data_ptr(&mut self, block_ptr: u32) {
-        self.dealloc_data_by_block_id(self.get_block_id_by_data_ptr(block_ptr));
+    fn dealloc_data_id(&mut self, block_id: u32) {
+        self.dealloc_data_by_block_id(self.get_block_id_by_data_id(block_id));
     }
 
     fn dealloc_data_by_block_id(&mut self, block_id: u32) {
@@ -114,5 +114,17 @@ impl FileSystem {
             &self.device,
             (block_id - self.data_area_start_block) as usize,
         );
+    }
+
+    pub(crate) fn get_root_inode(fs: &Arc<Mutex<Self>>) -> Inode {
+        let guard = fs.lock();
+        let device = guard.device.clone();
+        let (block_id, block_offset) = guard.get_disk_inode_pos_by_id(0);
+        Inode {
+            block_id: block_id as usize,
+            block_offset,
+            fs: fs.clone(),
+            device,
+        }
     }
 }

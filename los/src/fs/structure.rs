@@ -1,10 +1,12 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{string::String, sync::Arc, vec::Vec};
+use spin::Mutex;
 
 use crate::fs::config::BLOCK_SIZE;
 
 use super::{
     cache::{BlockDevice, BLOCK_CACHE_MANAGER},
     config::{EFS_MAGIC, INODE_DIRECT_COUNT, INODE_INDIRECT_COUNT},
+    FileSystem,
 };
 
 #[repr(C)]
@@ -100,6 +102,7 @@ impl BitMap {
     }
 }
 
+#[derive(PartialEq)]
 pub(crate) enum InodeType {
     File,
     Directory,
@@ -428,5 +431,94 @@ impl DirEntry {
 
     pub(crate) fn get_inode(&self) -> u32 {
         self.inode_id
+    }
+}
+
+pub(crate) struct Inode {
+    pub(crate) block_id: usize,
+    pub(crate) block_offset: usize,
+    pub(crate) fs: Arc<Mutex<FileSystem>>,
+    pub(crate) device: Arc<dyn BlockDevice>,
+}
+
+impl Inode {
+    pub(crate) fn new(
+        block_id: usize,
+        block_offset: usize,
+        fs: Arc<Mutex<FileSystem>>,
+        device: Arc<dyn BlockDevice>,
+    ) -> Self {
+        Self {
+            block_id,
+            block_offset,
+            fs,
+            device,
+        }
+    }
+
+    pub(crate) fn read_disk_inode<V>(&self, f: impl FnOnce(&DiskInode) -> V) -> V {
+        BLOCK_CACHE_MANAGER
+            .lock()
+            .get_block(self.block_id, self.device.clone())
+            .lock()
+            .read(self.block_offset, f)
+    }
+
+    pub(crate) fn modify_disk_inode<V>(&self, f: impl FnOnce(&mut DiskInode) -> V) -> V {
+        BLOCK_CACHE_MANAGER
+            .lock()
+            .get_block(self.block_id, self.device.clone())
+            .lock()
+            .modify(self.block_offset, f)
+    }
+
+    pub(crate) fn find_inode_id(&self, name: &str, disk_inode: &DiskInode) -> Option<u32> {
+        assert!(disk_inode.node_type == InodeType::Directory);
+        let file_cnt = disk_inode.size as usize / size_of::<DirEntry>();
+        let mut dir = DirEntry::empty();
+        for i in 0..file_cnt {
+            let offset = i * size_of::<DirEntry>();
+            if disk_inode.read_at(offset, dir.as_bytes_mut(), self.device.clone())
+                == size_of::<DirEntry>()
+            {
+                if dir.get_name() == name {
+                    return Some(dir.get_inode());
+                }
+            }
+        }
+        None
+    }
+
+    pub(crate) fn find(&self, name: &str) -> Option<Arc<Inode>> {
+        self.read_disk_inode(|disk_inode| {
+            self.find_inode_id(name, disk_inode).map(|inode_id| {
+                let (block_id, block_offset) = self.fs.lock().get_disk_inode_pos_by_id(inode_id);
+                Arc::new(Inode::new(
+                    block_id as usize,
+                    block_offset,
+                    self.fs.clone(),
+                    self.device.clone(),
+                ))
+            })
+        })
+    }
+
+    pub(crate) fn ls(&self) -> Vec<String> {
+        let mut res = Vec::new();
+        let _guard = self.fs.lock();
+        self.read_disk_inode(|disk_inode| {
+            assert!(disk_inode.node_type == InodeType::Directory);
+            let file_cnt = disk_inode.size as usize / size_of::<DirEntry>();
+            let mut dir = DirEntry::empty();
+            for i in 0..file_cnt {
+                let offset = i * size_of::<DirEntry>();
+                if disk_inode.read_at(offset, dir.as_bytes_mut(), self.device.clone())
+                    == size_of::<DirEntry>()
+                {
+                    res.push(String::from(dir.get_name()));
+                }
+            }
+        });
+        res
     }
 }
