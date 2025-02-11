@@ -37,7 +37,7 @@ impl FileSystem {
         let mut guard = BLOCK_CACHE_MANAGER.lock();
         for index in 0..total_block_num as usize {
             guard
-                .get_block(index, device.clone())
+                .get_block(index, &device)
                 .lock()
                 .modify(0, |block: &mut DataBlock| {
                     for ptr in block {
@@ -46,7 +46,7 @@ impl FileSystem {
                 })
         }
         guard
-            .get_block(0, device.clone())
+            .get_block(0, &device)
             .lock()
             .modify(0, |block: &mut SuperBlock| {
                 block.init(
@@ -67,12 +67,12 @@ impl FileSystem {
         };
         assert!(fs.inode_bitmap.alloc(&device) == Some(0));
         let (block_id, block_offset) = fs.get_disk_inode_pos_by_id(0);
-        guard
-            .get_block(block_id as usize, device.clone())
-            .lock()
-            .modify(block_offset, |root_inode: &mut DiskInode| {
+        guard.get_block(block_id as usize, &device).lock().modify(
+            block_offset,
+            |root_inode: &mut DiskInode| {
                 root_inode.init(InodeType::Directory);
-            });
+            },
+        );
         guard.sync_all();
         Arc::new(Mutex::new(fs))
     }
@@ -96,14 +96,14 @@ impl FileSystem {
         self.data_bitmap.alloc(&self.device).unwrap() as u32
     }
 
-    fn dealloc_data_id(&mut self, block_id: u32) {
-        self.dealloc_data_by_block_id(self.get_block_id_by_data_id(block_id));
+    fn dealloc_data_id(&mut self, data_id: u32) {
+        self.dealloc_data_by_block_id(self.get_block_id_by_data_id(data_id));
     }
 
     fn dealloc_data_by_block_id(&mut self, block_id: u32) {
         BLOCK_CACHE_MANAGER
             .lock()
-            .get_block(block_id as usize, self.device.clone())
+            .get_block(block_id as usize, &self.device)
             .lock()
             .modify(0, |data_block: &mut DataBlock| {
                 for ptr in data_block {

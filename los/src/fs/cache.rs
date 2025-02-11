@@ -84,7 +84,7 @@ impl BlockCacheManager {
     pub(crate) fn get_block(
         &mut self,
         id: usize,
-        device: Arc<dyn BlockDevice>,
+        device: &Arc<dyn BlockDevice>,
     ) -> Arc<Mutex<BlockCache>> {
         match self.queue.iter().find(|pair| pair.0 == id) {
             Some(pair) => pair.1.clone(),
@@ -101,7 +101,7 @@ impl BlockCacheManager {
                         panic!("暂时先不负责");
                     }
                 }
-                let cache = Arc::new(Mutex::new(BlockCache::new(id, device)));
+                let cache = Arc::new(Mutex::new(BlockCache::new(id, device.clone())));
                 self.queue.push_back((id, cache.clone()));
                 cache
             }
