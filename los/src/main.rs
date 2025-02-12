@@ -20,6 +20,7 @@ mod process;
 mod stack;
 mod syscall;
 mod timer;
+mod drivers;
 
 mod temp_test;
 

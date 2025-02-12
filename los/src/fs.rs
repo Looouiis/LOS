@@ -1,4 +1,4 @@
-use alloc::sync::Arc;
+use alloc::{sync::Arc, vec::Vec};
 use cache::{BlockDevice, BLOCK_CACHE_MANAGER};
 use config::BLOCK_SIZE;
 use spin::mutex::Mutex;
@@ -7,6 +7,29 @@ use structure::{BitMap, DataBlock, DiskInode, Inode, InodeType, SuperBlock};
 pub mod cache;
 pub mod config;
 pub mod structure;
+
+pub trait File {
+    fn read(&self, buf: UserBuffer) -> usize;
+    fn write(&self, buf: UserBuffer) -> usize;
+}
+
+pub struct UserBuffer {
+    pub buffers: Vec<&'static mut [u8]>,
+}
+
+impl UserBuffer {
+    pub(crate) fn new(buffers: Vec<&'static mut [u8]>) -> Self {
+        Self {
+            buffers
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.buffers.iter().map(|item| {
+            item.len()
+        }).sum()
+    }
+}
 
 pub(crate) struct FileSystem {
     pub(crate) device: Arc<dyn BlockDevice>,

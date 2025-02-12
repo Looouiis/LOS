@@ -11,3 +11,4 @@ sbi-rt = { version = "0.0.3", features = ["legacy"] }
 spin = "0.9.8"
 xmas-elf = "0.9.1"
 syscall_spec = { path = "../syscall_spec" }
+virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "4ee80e5" }

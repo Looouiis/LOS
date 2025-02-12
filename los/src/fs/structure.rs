@@ -549,7 +549,6 @@ impl Inode {
         }
         // 申请目标文件的inode_id
         let new_id = fs.alloc_inode_id();
-        let mut guard = BLOCK_CACHE_MANAGER.lock();
         // 修改本inode（类型为文件夹）中的目录项
         self.modify_disk_inode(|disk_inode| {
             let file_cnt = disk_inode.size as usize / size_of::<DirEntry>();
@@ -564,6 +563,7 @@ impl Inode {
         });
         let (block_id, block_offset) = fs.get_disk_inode_pos_by_id(new_id);
         // 初始化目标文件的磁盘inode
+        let mut guard = BLOCK_CACHE_MANAGER.lock();
         guard
             .get_block(block_id as usize, &self.device)
             .lock()

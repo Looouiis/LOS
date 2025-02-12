@@ -44,7 +44,7 @@ struct BuildArgs {
 }
 
 impl BuildArgs {
-    fn build(&self, binary: bool) -> PathBuf {
+    fn build_base(&self) -> PathBuf {
         let target = match &self.target {
             Some(string) => {
                 if string == "riscv" {
@@ -68,12 +68,15 @@ impl BuildArgs {
             .release()
             .target(target)
             .invoke();
-        let elf = project_path()
+        project_path()
             .join("target")
             .join(target)
             // .join(if self.debug { "debug" } else { "release" })
             .join("release")
-            .join("los");
+    }
+
+    fn build(&self, binary: bool) -> PathBuf {
+        let elf = self.build_base().join("los");
         if binary {
             let bin = elf.with_extension("bin");
             BinUtil::objcopy()
@@ -98,15 +101,14 @@ impl RunArgs {
     fn run(&self) {
         let sbi = project_path().join("sbi").join("rustsbi-qemu.bin");
         let los = BuildArgs::build(&self.build, true);
+        let fs_img = BuildArgs::build_base(&self.build).join("fs.img");
         let system = Qemu::system("riscv64")
             .args(["-machine", "virt"])
             .arg("-nographic")
             .args(["-bios", sbi.to_str().unwrap()])
-            .arg("-device")
-            .arg(format!(
-                "loader,file={kernel},addr=0x80200000",
-                kernel = los.to_str().unwrap()
-            ))
+            .args(["-device", format!("loader,file={kernel},addr=0x80200000", kernel = los.to_str().unwrap()).as_str()])
+            .args(["-drive", format!("file={fs_img},if=none,format=raw,id=x0", fs_img = fs_img.to_str().unwrap()).as_str()])
+            .args(["-device", "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0"])
             .conditional(self.build.debug, |qemu| {
                 qemu.args(["-s", "-S"]);
             })
