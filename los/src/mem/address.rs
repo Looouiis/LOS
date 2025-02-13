@@ -13,7 +13,7 @@ pub const PPN_WIDTH_SV39: usize = PHYSICAL_ADDRESS_WIDTH_SV39 - PAGE_SIZE_BITS;
 pub const VPN_WIDTH_SV39: usize = VIRTUAL_ADDRESS_WIDTH_SV39 - PAGE_SIZE_BITS;
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub(crate) struct PhyAddr(usize);
+pub(crate) struct PhyAddr(pub usize);
 
 impl From<usize> for PhyAddr {
     fn from(value: usize) -> Self {
@@ -144,6 +144,12 @@ impl From<PhyPageNum> for usize {
 impl Debug for PhyPageNum {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_fmt(format_args!("ppn: {:#x}", self.0))
+    }
+}
+
+impl StepByOne for PhyPageNum {
+    fn step(&mut self) {
+        self.0 += 1;
     }
 }
 

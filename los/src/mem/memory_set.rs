@@ -2,7 +2,12 @@ use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
 
 use crate::{
-    arch_relate, config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT}, drivers::MMIO, mem::PhyAddr, process::ArcCell, stack::USER_STACK_SIZE
+    arch_relate,
+    config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT},
+    drivers::MMIO,
+    mem::PhyAddr,
+    process::ArcCell,
+    stack::USER_STACK_SIZE,
 };
 
 use super::{
@@ -253,9 +258,9 @@ impl MemorySet {
                     VirAddr::from(pair.0),
                     VirAddr::from(pair.0 + pair.1),
                     MapType::Identical,
-                    MapPermission::R | MapPermission::W
+                    MapPermission::R | MapPermission::W,
                 ),
-                None
+                None,
             );
         }
         kernel_memory_set

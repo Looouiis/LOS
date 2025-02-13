@@ -19,15 +19,11 @@ pub struct UserBuffer {
 
 impl UserBuffer {
     pub(crate) fn new(buffers: Vec<&'static mut [u8]>) -> Self {
-        Self {
-            buffers
-        }
+        Self { buffers }
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.buffers.iter().map(|item| {
-            item.len()
-        }).sum()
+        self.buffers.iter().map(|item| item.len()).sum()
     }
 }
 

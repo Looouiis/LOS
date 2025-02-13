@@ -9,6 +9,7 @@ use super::FRAME_ALLOCATOR;
 
 pub(crate) trait FrameAllocator {
     fn alloc(&mut self) -> Option<PhyPageNum>;
+    fn alloc_fresh(&mut self) -> Option<PhyPageNum>;
     fn dealloc(&mut self, ppn: PhyPageNum);
 }
 
@@ -38,13 +39,18 @@ impl FrameAllocator for StackFrameAllocator {
         if let Some(frame) = self.recycled.pop() {
             Some(frame.into())
         } else {
-            if self.current < self.end {
-                let res = self.current;
-                self.current += 1;
-                Some(res.into())
-            } else {
-                None
-            }
+            self.alloc_fresh()
+        }
+    }
+
+    #[inline]
+    fn alloc_fresh(&mut self) -> Option<PhyPageNum> {
+        if self.current < self.end {
+            let res = self.current;
+            self.current += 1;
+            Some(res.into())
+        } else {
+            None
         }
     }
 
@@ -75,20 +81,20 @@ impl LockedStackFrameAllocator {
         }
     }
 
+    pub(crate) fn init(&self, start: PhyPageNum, end: PhyPageNum) {
+        self.inner.lock().init(start, end);
+    }
+
     pub(crate) fn alloc(&self) -> Option<FrameTracker> {
         self.inner.lock().alloc().map(FrameTracker::new)
     }
 
-    fn dealloc(&self, ppn: PhyPageNum) {
-        self.inner.lock().dealloc(ppn);
+    pub(crate) fn alloc_fresh(&self) -> Option<FrameTracker> {
+        self.inner.lock().alloc_fresh().map(FrameTracker::new)
     }
-}
 
-impl Deref for LockedStackFrameAllocator {
-    type Target = Mutex<StackFrameAllocator>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+    pub(crate) fn dealloc(&self, ppn: PhyPageNum) {
+        self.inner.lock().dealloc(ppn);
     }
 }
 

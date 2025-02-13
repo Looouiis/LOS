@@ -611,3 +611,24 @@ impl Inode {
         });
     }
 }
+
+pub(crate) struct OSInode {
+    readable: bool,
+    writeable: bool,
+    mutable: Mutex<OSInodeMutable>,
+}
+
+impl OSInode {
+    pub(crate) fn new(readable: bool, writeable: bool, inode: Arc<Inode>) -> Self {
+        Self {
+            readable,
+            writeable,
+            mutable: Mutex::new(OSInodeMutable { offset: 0, inode }),
+        }
+    }
+}
+
+pub(crate) struct OSInodeMutable {
+    offset: usize,
+    inode: Arc<Inode>,
+}

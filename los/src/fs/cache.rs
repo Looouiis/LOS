@@ -7,7 +7,7 @@ use super::config::{BLOCK_SIZE, CACHE_NUM};
 
 pub static BLOCK_CACHE_MANAGER: Mutex<BlockCacheManager> = Mutex::new(BlockCacheManager::new());
 
-pub(crate) trait BlockDevice: Send + Sync + Any {
+pub trait BlockDevice: Send + Sync + Any {
     fn read_block(&self, block_id: usize, buf: &mut [u8]);
     fn write_block(&self, block_id: usize, buf: &[u8]);
 }

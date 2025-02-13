@@ -17,7 +17,7 @@ extern "C" {
 
 pub(crate) fn init() {
     HEAP_ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE);
-    FRAME_ALLOCATOR.lock().init(
+    FRAME_ALLOCATOR.init(
         PhyAddr::from(__kernel_end as usize).ceil_to_ppn(),
         PhyAddr::from(MEMORY_END).floor_to_ppn(),
     );
