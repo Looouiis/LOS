@@ -21,6 +21,7 @@ use crate::{
         trap::{trap_return, ProcessContext, TrapContext},
     },
     config::TRAP_CONTEXT,
+    fs::File,
     mem::{
         address::{PhyPageNum, VirAddr},
         memory_set::{MemorySet, KERNEL_SPACE},
@@ -136,6 +137,7 @@ pub(crate) struct Process {
     #[allow(unused)]
     pub(crate) father: Option<Weak<Mutex<Process>>>,
     pub(crate) exit_code: Option<i32>,
+    pub(crate) fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
 }
 
 impl Process {
@@ -174,6 +176,7 @@ impl Process {
             children: Vec::new(),
             father: None,
             exit_code: None,
+            fd_table: Vec::new(),
         }))
     }
 
@@ -234,6 +237,7 @@ impl Process {
             children: Vec::new(),
             father: Some(Arc::downgrade(from)),
             exit_code: None,
+            fd_table: Vec::new(),
         }));
         guard.children.push(Arc::downgrade(&res));
         res

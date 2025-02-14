@@ -6,7 +6,7 @@ use crate::fs::config::BLOCK_SIZE;
 use super::{
     cache::{BlockDevice, BLOCK_CACHE_MANAGER},
     config::{EFS_MAGIC, INODE_DIRECT_COUNT, INODE_INDIRECT_COUNT},
-    FileSystem,
+    File, FileSystem,
 };
 
 #[repr(C)]
@@ -594,21 +594,19 @@ impl Inode {
         });
     }
 
-    pub(crate) fn read_at(&self, start: usize, buf: &mut [u8]) {
+    pub(crate) fn read_at(&self, start: usize, buf: &mut [u8]) -> usize {
         let _guard = self.fs.lock();
-        self.read_disk_inode(|disk_inode| {
-            disk_inode.read_at(start, buf, &self.device);
-        })
+        self.read_disk_inode(|disk_inode| disk_inode.read_at(start, buf, &self.device))
     }
 
-    pub(crate) fn write_at(&self, start: usize, buf: &[u8]) {
+    pub(crate) fn write_at(&self, start: usize, buf: &[u8]) -> usize {
         let mut fs = self.fs.lock();
         self.modify_disk_inode(|disk_inode| {
             if start + buf.len() > disk_inode.size as usize {
                 self.increase_size((start + buf.len()) as u32, disk_inode, &mut fs);
             }
-            disk_inode.write_at(start, buf, &self.device);
-        });
+            disk_inode.write_at(start, buf, &self.device)
+        })
     }
 }
 
@@ -631,4 +629,42 @@ impl OSInode {
 pub(crate) struct OSInodeMutable {
     offset: usize,
     inode: Arc<Inode>,
+}
+
+impl File for OSInode {
+    fn readable(&self) -> bool {
+        self.readable
+    }
+
+    fn writeable(&self) -> bool {
+        self.writeable
+    }
+
+    fn read(&self, mut buf: super::UserBuffer) -> usize {
+        let mut inner = self.mutable.lock();
+        let mut total_len = 0;
+        for slice in buf.buffers.iter_mut() {
+            let len = inner.inode.read_at(inner.offset, *slice);
+            if len == 0 {
+                break;
+            }
+            inner.offset += len;
+            total_len += len;
+        }
+        total_len
+    }
+
+    fn write(&self, buf: super::UserBuffer) -> usize {
+        let mut inner = self.mutable.lock();
+        let mut total_len = 0;
+        for slice in buf.buffers.iter() {
+            let len = inner.inode.write_at(inner.offset, *slice);
+            if len == 0 {
+                break;
+            }
+            inner.offset += len;
+            total_len += len;
+        }
+        total_len
+    }
 }

@@ -9,6 +9,8 @@ pub mod config;
 pub mod structure;
 
 pub trait File {
+    fn readable(&self) -> bool;
+    fn writeable(&self) -> bool;
     fn read(&self, buf: UserBuffer) -> usize;
     fn write(&self, buf: UserBuffer) -> usize;
 }
