@@ -1,12 +1,26 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{string::String, sync::Arc, vec::Vec};
 use cache::{BlockDevice, BLOCK_CACHE_MANAGER};
 use config::BLOCK_SIZE;
+use lazy_static::lazy_static;
 use spin::mutex::Mutex;
-use structure::{BitMap, DataBlock, DiskInode, Inode, InodeType, SuperBlock};
+use structure::{open_file, BitMap, DataBlock, DiskInode, Inode, InodeType, OpenFlags, SuperBlock};
+
+use crate::{
+    drivers::block::BLOCK_DEVICE,
+    mem::{address::VirAddr, page_table::ROTable},
+    PROCESS_MANAGER,
+};
 
 pub mod cache;
 pub mod config;
 pub mod structure;
+
+lazy_static! {
+    pub(crate) static ref ROOT_INODE: Arc<Inode> = Arc::new({
+        let fs = FileSystem::open(BLOCK_DEVICE.clone());
+        Inode::get_root_inode(&fs)
+    });
+}
 
 pub trait File {
     fn readable(&self) -> bool;
@@ -96,6 +110,27 @@ impl FileSystem {
         );
         guard.sync_all();
         Arc::new(Mutex::new(fs))
+    }
+
+    pub(crate) fn open(device: Arc<dyn BlockDevice>) -> Arc<Mutex<Self>> {
+        BLOCK_CACHE_MANAGER
+            .lock()
+            .get_block(0, &device)
+            .lock()
+            .read(0, |block: &SuperBlock| {
+                let inode_bitmap_block_num = block.inode_bitmap_block_num as usize;
+                let data_bitmap_block_num = block.data_bitmap_block_num as usize;
+                let inode_total_block_num =
+                    inode_bitmap_block_num + block.inode_area_block_num as usize;
+                Arc::new(Mutex::new(Self {
+                    device,
+                    inode_bitmap: BitMap::new(1, inode_bitmap_block_num),
+                    data_bitmap: BitMap::new(1 + inode_bitmap_block_num, data_bitmap_block_num),
+                    inode_area_start_block: (1 + inode_bitmap_block_num) as u32,
+                    data_area_start_block: (1 + inode_total_block_num + data_bitmap_block_num)
+                        as u32,
+                }))
+            })
     }
 
     fn get_disk_inode_pos_by_id(&self, inode_id: u32) -> (u32, usize) {

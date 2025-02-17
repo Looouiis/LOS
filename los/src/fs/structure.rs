@@ -1,7 +1,7 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use spin::{Mutex, MutexGuard};
 
-use crate::fs::config::BLOCK_SIZE;
+use crate::fs::{config::BLOCK_SIZE, ROOT_INODE};
 
 use super::{
     cache::{BlockDevice, BLOCK_CACHE_MANAGER},
@@ -456,6 +456,17 @@ impl Inode {
         }
     }
 
+    pub(crate) fn get_root_inode(fs: &Arc<Mutex<FileSystem>>) -> Self {
+        let guard = fs.lock();
+        let (root_block_id, root_block_offset) = guard.get_disk_inode_pos_by_id(0);
+        Self {
+            block_id: root_block_id as usize,
+            block_offset: root_block_offset,
+            fs: fs.clone(),
+            device: guard.device.clone(),
+        }
+    }
+
     pub(crate) fn read_disk_inode<V>(&self, f: impl FnOnce(&DiskInode) -> V) -> V {
         BLOCK_CACHE_MANAGER
             .lock()
@@ -580,7 +591,7 @@ impl Inode {
         )))
     }
 
-    pub(crate) fn clear(&self) {
+    pub(crate) fn clear_data(&self) {
         let mut fs = self.fs.lock();
         self.modify_disk_inode(|disk_inode| {
             let need_dealloc = disk_inode.clear_size(&self.device);
@@ -666,5 +677,48 @@ impl File for OSInode {
             total_len += len;
         }
         total_len
+    }
+}
+
+bitflags! {
+    pub struct OpenFlags: u32 {
+        const RDONLY = 0;
+        const WRONLY = 1 << 0;
+        const RDWR = 1 << 1;
+        const CREATE = 1 << 9;
+        const TRUNC = 1 << 10;
+    }
+}
+
+impl OpenFlags {
+    pub(crate) fn read_write(&self) -> (bool, bool) {
+        if self.is_empty() {
+            (true, false)
+        } else if self.contains(Self::WRONLY) {
+            (false, true)
+        } else {
+            (true, true)
+        }
+    }
+}
+
+pub(crate) fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
+    let (readable, writeable) = flags.read_write();
+    match ROOT_INODE.find(name) {
+        Some(inode) => {
+            if flags.contains(OpenFlags::TRUNC) {
+                inode.clear_data();
+            }
+            Some(Arc::new(OSInode::new(readable, writeable, inode)))
+        }
+        None => {
+            if flags.contains(OpenFlags::CREATE) {
+                ROOT_INODE
+                    .create(name)
+                    .map(|inode| Arc::new(OSInode::new(readable, writeable, inode)))
+            } else {
+                None
+            }
+        }
     }
 }
