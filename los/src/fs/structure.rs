@@ -1,3 +1,5 @@
+use core::mem::MaybeUninit;
+
 use alloc::{string::String, sync::Arc, vec::Vec};
 use spin::{Mutex, MutexGuard};
 
@@ -635,6 +637,22 @@ impl OSInode {
             mutable: Mutex::new(OSInodeMutable { offset: 0, inode }),
         }
     }
+
+    #[allow(invalid_value)]
+    pub(crate) fn read_all(&self) -> Vec<u8> {
+        let mut inner = self.mutable.lock();
+        let mut buffer: [u8; BLOCK_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
+        let mut res = Vec::new();
+        loop {
+            let len = inner.inode.read_at(inner.offset, &mut buffer);
+            if len == 0 {
+                break;
+            }
+            res.extend_from_slice(&buffer);
+            inner.offset += len;
+        }
+        res
+    }
 }
 
 pub(crate) struct OSInodeMutable {
@@ -654,7 +672,7 @@ impl File for OSInode {
     fn read(&self, mut buf: super::UserBuffer) -> usize {
         let mut inner = self.mutable.lock();
         let mut total_len = 0;
-        for slice in buf.buffers.iter_mut() {
+        for slice in buf.iter_mut() {
             let len = inner.inode.read_at(inner.offset, *slice);
             if len == 0 {
                 break;
@@ -668,7 +686,7 @@ impl File for OSInode {
     fn write(&self, buf: super::UserBuffer) -> usize {
         let mut inner = self.mutable.lock();
         let mut total_len = 0;
-        for slice in buf.buffers.iter() {
+        for slice in buf.iter() {
             let len = inner.inode.write_at(inner.offset, *slice);
             if len == 0 {
                 break;

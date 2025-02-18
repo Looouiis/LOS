@@ -21,7 +21,10 @@ use crate::{
         trap::{trap_return, ProcessContext, TrapContext},
     },
     config::TRAP_CONTEXT,
-    fs::File,
+    fs::{
+        structure::{open_file, OpenFlags},
+        File,
+    },
     mem::{
         address::{PhyPageNum, VirAddr},
         memory_set::{MemorySet, KERNEL_SPACE},
@@ -149,7 +152,7 @@ impl Process {
         arch_relate::to_token(self.memory_set.page_table.address())
     }
 
-    pub(crate) fn new(elf_data: &'static [u8]) -> Arc<Mutex<Self>> {
+    pub(crate) fn new(elf_data: &[u8]) -> Arc<Mutex<Self>> {
         let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
         let (memory_set, user_sp_top_va, entry_point) = MemorySet::from_elf(elf_data);
         let trapctx_ppn = memory_set
@@ -180,7 +183,7 @@ impl Process {
         }))
     }
 
-    pub(crate) fn exec(&mut self, elf_data: &'static [u8]) {
+    pub(crate) fn exec(&mut self, elf_data: &[u8]) {
         let kernel_stack_top = self
             .memory_set
             .page_table
@@ -241,6 +244,32 @@ impl Process {
         }));
         guard.children.push(Arc::downgrade(&res));
         res
+    }
+
+    pub(crate) fn alloc_fd(&mut self) -> usize {
+        (0..self.fd_table.len())
+            .find(|idx| self.fd_table[*idx].is_none())
+            .unwrap_or({
+                self.fd_table.push(None);
+                self.fd_table.len() - 1
+            })
+    }
+
+    pub(crate) fn set_fd(&mut self, fd: usize, file: Arc<dyn File + Send + Sync>) {
+        self.fd_table[fd] = Some(file)
+    }
+
+    pub(crate) fn dealloc_fd(&mut self, fd: usize) -> bool {
+        if fd >= self.fd_table.len() || self.fd_table[fd].is_some() {
+            false
+        } else {
+            self.fd_table[fd].take();
+            true
+        }
+    }
+
+    pub(crate) fn get_fd(&self, fd: usize) -> &Option<Arc<dyn File + Send + Sync>> {
+        self.fd_table.get(fd).unwrap_or(&None)
     }
 }
 
@@ -384,9 +413,9 @@ impl ProcessManager {
     }
 
     pub(crate) fn add_task(&mut self, name: &str) {
-        match self.get_elf_by_name(name) {
-            Some(slice) => {
-                let process = Process::new(slice);
+        match /* self.get_elf_by_name(name) */ open_file(name, OpenFlags::RDONLY).map(|file| file.read_all()) {
+            Some(data) => {
+                let process = Process::new(data.as_slice());
                 match self.current_program {
                     Some(_) => {
                         self.process.push_back(process);
@@ -402,15 +431,15 @@ impl ProcessManager {
         }
     }
 
-    pub(crate) fn get_elf_by_name(&self, name: &str) -> Option<&'static [u8]> {
-        match self.name_map.get(name) {
-            Some(index) => unsafe { Some(self.get_program_elf_bytes(*index)) },
-            None => {
-                log!("can't find name {name}");
-                None
-            }
-        }
-    }
+    // pub(crate) fn get_elf_by_name(&self, name: &str) -> Option<&'static [u8]> {
+    //     match self.name_map.get(name) {
+    //         Some(index) => unsafe { Some(self.get_program_elf_bytes(*index)) },
+    //         None => {
+    //             log!("can't find name {name}");
+    //             None
+    //         }
+    //     }
+    // }
 
     // index范围：[0, program_num)
     unsafe fn get_program_elf_bytes(&self, index: usize) -> &'static [u8] {

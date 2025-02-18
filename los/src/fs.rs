@@ -7,6 +7,7 @@ use structure::{open_file, BitMap, DataBlock, DiskInode, Inode, InodeType, OpenF
 
 use crate::{
     drivers::block::BLOCK_DEVICE,
+    io::get_user_buf,
     mem::{address::VirAddr, page_table::ROTable},
     PROCESS_MANAGER,
 };
@@ -29,19 +30,21 @@ pub trait File {
     fn write(&self, buf: UserBuffer) -> usize;
 }
 
-pub struct UserBuffer {
-    pub buffers: Vec<&'static mut [u8]>,
-}
+type UserBuffer = Vec<&'static mut [u8]>;
 
-impl UserBuffer {
-    pub(crate) fn new(buffers: Vec<&'static mut [u8]>) -> Self {
-        Self { buffers }
-    }
+// pub struct UserBuffer {
+//     pub buffers: Vec<&'static mut [u8]>,
+// }
 
-    pub(crate) fn len(&self) -> usize {
-        self.buffers.iter().map(|item| item.len()).sum()
-    }
-}
+// impl UserBuffer {
+//     pub(crate) fn new(buffers: Vec<&'static mut [u8]>) -> Self {
+//         Self { buffers }
+//     }
+
+//     pub(crate) fn len(&self) -> usize {
+//         self.buffers.iter().map(|item| item.len()).sum()
+//     }
+// }
 
 pub(crate) struct FileSystem {
     pub(crate) device: Arc<dyn BlockDevice>,
@@ -182,5 +185,70 @@ impl FileSystem {
             fs: fs.clone(),
             device,
         }
+    }
+}
+
+pub(crate) fn sys_open(path: *const u8, flags: u32) -> isize {
+    let openf_lags = OpenFlags::from_bits(flags).unwrap();
+    let mut name = String::new();
+    let mgr = PROCESS_MANAGER.get();
+    let table = ROTable::from_token(mgr.get_current_token());
+    let va = VirAddr::from(path as usize);
+    loop {
+        let pa = table.va_to_pa(va).unwrap();
+        let ch = unsafe { *(pa.0 as *const char) };
+        if ch == '\0' {
+            break;
+        }
+        name.push(ch);
+    }
+    match open_file(name.as_str(), openf_lags) {
+        Some(inode) => {
+            let process = mgr.get_process().as_ref().unwrap();
+            let mut guard = process.lock();
+            let fd = guard.alloc_fd();
+            guard.set_fd(fd, inode);
+            fd as isize
+        }
+        None => -1,
+    }
+}
+
+pub(crate) fn sys_close(fd: usize) -> isize {
+    let mgr = PROCESS_MANAGER.get();
+    let process = mgr.get_process().as_ref().unwrap();
+    let mut guard = process.lock();
+    if guard.dealloc_fd(fd) {
+        0
+    } else {
+        -1
+    }
+}
+
+pub(crate) fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
+    let mgr = PROCESS_MANAGER.get();
+    let process = mgr.get_process().as_ref().unwrap();
+    let guard = process.lock();
+    let table = ROTable::from_token(guard.get_token());
+    match guard.get_fd(fd) {
+        Some(file) => {
+            let translated_buffer = get_user_buf(&table, buf, len);
+            file.write(translated_buffer) as isize
+        }
+        None => -1,
+    }
+}
+
+pub(crate) fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
+    let mgr = PROCESS_MANAGER.get();
+    let process = mgr.get_process().as_ref().unwrap();
+    let guard = process.lock();
+    let table = ROTable::from_token(guard.get_token());
+    match guard.get_fd(fd) {
+        Some(file) => {
+            let translated_buffer = get_user_buf(&table, buf, len);
+            file.read(translated_buffer) as isize
+        }
+        None => -1,
     }
 }

@@ -72,8 +72,11 @@ macro_rules! println {
 const STDOUT: usize = 1;
 const STDIN: usize = 0;
 
-pub(crate) fn get_user_slice(token: usize, ptr: *const u8, len: usize) -> Vec<&'static [u8]> {
-    let page_table = ROTable::from_token(token);
+pub(crate) fn get_user_buf(
+    page_table: &ROTable,
+    ptr: *const u8,
+    len: usize,
+) -> Vec<&'static mut [u8]> {
     let mut start = ptr as usize;
     let end = start + len;
     let mut v = Vec::new();
@@ -84,9 +87,9 @@ pub(crate) fn get_user_slice(token: usize, ptr: *const u8, len: usize) -> Vec<&'
         vpn.step();
         let end_va = VirAddr::from(vpn).min(VirAddr::from(end));
         if end_va.page_offset() == 0 {
-            v.push(&ppn.get_bytes_array()[start_va.page_offset()..]);
+            v.push(&mut ppn.get_bytes_array()[start_va.page_offset()..]);
         } else {
-            v.push(&ppn.get_bytes_array()[start_va.page_offset()..end_va.page_offset()]);
+            v.push(&mut ppn.get_bytes_array()[start_va.page_offset()..end_va.page_offset()]);
         }
         start = end_va.into();
     }
@@ -96,7 +99,8 @@ pub(crate) fn get_user_slice(token: usize, ptr: *const u8, len: usize) -> Vec<&'
 pub(crate) fn linux_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehavior {
     match fd {
         STDOUT => {
-            let slice = get_user_slice(PROCESS_MANAGER.get().get_current_token(), buf, len);
+            let table = ROTable::from_token(PROCESS_MANAGER.get().get_current_token());
+            let slice = get_user_buf(&table, buf, len);
             for s in slice {
                 let str = core::str::from_utf8(s).unwrap();
                 print!("{}", str);
