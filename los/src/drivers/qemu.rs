@@ -1,11 +1,10 @@
 use alloc::vec::Vec;
-use lazy_static::lazy_static;
+use fs::cache::BlockDevice;
 use spin::mutex::Mutex;
 use virtio_drivers::{Hal, VirtIOBlk, VirtIOHeader};
 
 use crate::{
     arch_relate,
-    fs::cache::BlockDevice,
     mem::{
         address::{PhyAddr, StepByOne, VirAddr},
         allocator::{frame::FrameTracker, FRAME_ALLOCATOR},

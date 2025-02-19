@@ -1,5 +1,5 @@
 [workspace]
-members = [
+members = [ "fs",
     "los", "syscall_spec", "user",
     "xtask",
 ]

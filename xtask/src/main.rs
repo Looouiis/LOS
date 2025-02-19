@@ -10,6 +10,8 @@ use std::{
     sync::OnceLock,
 };
 
+mod fs_std;
+
 fn project_path() -> &'static Path {
     static PROJECT: OnceLock<&'static Path> = OnceLock::new();
     PROJECT.get_or_init(|| Path::new(std::env!("CARGO_MANIFEST_DIR")).parent().unwrap())
@@ -41,6 +43,9 @@ struct BuildArgs {
     /// Debug模式
     #[clap(short, long)]
     debug: bool,
+    // 是否打包镜像文件
+    #[clap(short, long)]
+    pack: bool
 }
 
 impl BuildArgs {
@@ -60,6 +65,9 @@ impl BuildArgs {
             .release()
             .target(target)
             .invoke();
+        if self.pack {
+
+        }
         Cargo::build()
             .package("los")
             // .conditional(!self.debug, |cargo| {

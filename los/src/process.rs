@@ -11,6 +11,7 @@ use core::{
     cmp::min,
     ops::Deref,
 };
+use fs::structure::OpenFlags;
 use lazy_static::lazy_static;
 use spin::mutex::Mutex;
 
@@ -21,10 +22,7 @@ use crate::{
         trap::{trap_return, ProcessContext, TrapContext},
     },
     config::TRAP_CONTEXT,
-    fs::{
-        structure::{open_file, OpenFlags},
-        File,
-    },
+    fs::{open_file, File},
     mem::{
         address::{PhyPageNum, VirAddr},
         memory_set::{MemorySet, KERNEL_SPACE},

@@ -1,10 +1,11 @@
 #![allow(unused)]
 
 use alloc::{slice, vec::Vec};
+use fs::structure::OpenFlags;
 
 use crate::{
     arch_relate::disable_kernel_interrupt,
-    fs::structure::{open_file, OpenFlags},
+    fs::open_file,
     io::get_user_buf,
     mem::page_table::ROTable,
     process::{reschedule, switch_task, PROCESS_MANAGER},

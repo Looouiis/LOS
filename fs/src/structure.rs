@@ -1,28 +1,29 @@
-use core::mem::MaybeUninit;
+extern crate alloc;
 
 use alloc::{string::String, sync::Arc, vec::Vec};
+use bitflags::bitflags;
 use spin::{Mutex, MutexGuard};
 
-use crate::fs::{config::BLOCK_SIZE, ROOT_INODE};
+use crate::config::BLOCK_SIZE;
 
 use super::{
-    cache::{BlockDevice, BLOCK_CACHE_MANAGER},
+    FileSystem,
+    cache::{BLOCK_CACHE_MANAGER, BlockDevice},
     config::{EFS_MAGIC, INODE_DIRECT_COUNT, INODE_INDIRECT_COUNT},
-    File, FileSystem,
 };
 
 #[repr(C)]
-pub(crate) struct SuperBlock {
+pub struct SuperBlock {
     magic: u32,
-    pub(crate) total_block_num: u32,
-    pub(crate) inode_bitmap_block_num: u32,
-    pub(crate) inode_area_block_num: u32,
-    pub(crate) data_bitmap_block_num: u32,
-    pub(crate) data_area_block_num: u32,
+    pub total_block_num: u32,
+    pub inode_bitmap_block_num: u32,
+    pub inode_area_block_num: u32,
+    pub data_bitmap_block_num: u32,
+    pub data_area_block_num: u32,
 }
 
 impl SuperBlock {
-    pub(crate) fn init(
+    pub fn init(
         &mut self,
         total_block_num: u32,
         inode_bitmap_block_num: u32,
@@ -38,34 +39,34 @@ impl SuperBlock {
         self.data_area_block_num = data_area_block_num;
     }
 
-    pub(crate) fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         self.magic == EFS_MAGIC
     }
 }
 
-pub(crate) type BitMapBlock = [u64; 64];
-pub(crate) type DataBlock = [u8; BLOCK_SIZE];
+pub type BitMapBlock = [u64; 64];
+pub type DataBlock = [u8; BLOCK_SIZE];
 
 #[repr(C)]
-pub(crate) struct BitMap {
+pub struct BitMap {
     start_block_id: usize,
     block_num: usize,
 }
 
 impl BitMap {
-    pub(crate) fn new(start_block_id: usize, block_num: usize) -> Self {
+    pub fn new(start_block_id: usize, block_num: usize) -> Self {
         Self {
             start_block_id,
             block_num,
         }
     }
 
-    pub(crate) fn init(&mut self, start: usize, num: usize) {
+    pub fn init(&mut self, start: usize, num: usize) {
         self.start_block_id = start;
         self.block_num = num;
     }
 
-    pub(crate) fn alloc(&mut self, device: &Arc<dyn BlockDevice>) -> Option<usize> {
+    pub fn alloc(&mut self, device: &Arc<dyn BlockDevice>) -> Option<usize> {
         let mut guard = BLOCK_CACHE_MANAGER.lock();
         for i in 0..self.block_num {
             if let Some(res) = guard
@@ -88,7 +89,7 @@ impl BitMap {
         None
     }
 
-    pub(crate) fn dealloc(&mut self, device: &Arc<dyn BlockDevice>, pos: usize) {
+    pub fn dealloc(&mut self, device: &Arc<dyn BlockDevice>, pos: usize) {
         let block_idx = pos / 512;
         let block_offset = pos % 512;
         let unit_idx = block_offset / 64;
@@ -105,25 +106,25 @@ impl BitMap {
 }
 
 #[derive(PartialEq)]
-pub(crate) enum InodeType {
+pub enum InodeType {
     File,
     Directory,
 }
 
-type IndirectBlock = [u32; BLOCK_SIZE / size_of::<u32>()];
+// type IndirectBlock = [u32; BLOCK_SIZE / size_of::<u32>()];
 
 // 128byte / Inode
 #[repr(C)]
-pub(crate) struct DiskInode {
-    pub(crate) size: u32,
-    pub(crate) direct_zone: [u32; INODE_DIRECT_COUNT],
-    pub(crate) first_level_indirect: u32,
-    pub(crate) second_level_indirect: u32,
-    pub(crate) node_type: InodeType,
+pub struct DiskInode {
+    pub size: u32,
+    pub direct_zone: [u32; INODE_DIRECT_COUNT],
+    pub first_level_indirect: u32,
+    pub second_level_indirect: u32,
+    pub node_type: InodeType,
 }
 
 impl DiskInode {
-    pub(crate) fn init(&mut self, node_type: InodeType) {
+    pub fn init(&mut self, node_type: InodeType) {
         self.size = 0;
         self.direct_zone = [0; INODE_DIRECT_COUNT];
         self.first_level_indirect = 0; // 间接块中存的都是block地址（u32）
@@ -131,7 +132,7 @@ impl DiskInode {
         self.node_type = node_type;
     }
 
-    pub(crate) fn get_block_id(&self, offset: u32, device: &Arc<dyn BlockDevice>) -> u32 {
+    pub fn get_block_id(&self, offset: u32, device: &Arc<dyn BlockDevice>) -> u32 {
         let offset = offset as usize;
         if offset < INODE_DIRECT_COUNT {
             return self.direct_zone[offset];
@@ -163,12 +164,12 @@ impl DiskInode {
         }
     }
 
-    pub(crate) fn data_blocks_num(size: u32) -> usize {
+    pub fn data_blocks_num(size: u32) -> usize {
         (size as usize + BLOCK_SIZE - 1) / BLOCK_SIZE
     }
 
     // data_block + indirect_index_block
-    pub(crate) fn total_blocks_num(size: u32) -> usize {
+    pub fn total_blocks_num(size: u32) -> usize {
         let data_blocks_num = Self::data_blocks_num(size);
         let mut res = data_blocks_num;
         if data_blocks_num > INODE_DIRECT_COUNT {
@@ -182,11 +183,11 @@ impl DiskInode {
         res
     }
 
-    pub(crate) fn calc_new_blocks(&self, new_size: u32) -> usize {
+    pub fn calc_new_blocks(&self, new_size: u32) -> usize {
         Self::total_blocks_num(new_size) - Self::total_blocks_num(self.size)
     }
 
-    pub(crate) fn push_empty_blocks(
+    pub fn push_empty_blocks(
         &mut self,
         new_size: u32,
         new_blocks: Vec<u32>,
@@ -239,7 +240,7 @@ impl DiskInode {
         }
     }
 
-    pub(crate) fn clear_size(&mut self, device: &Arc<dyn BlockDevice>) -> Vec<u32> {
+    pub fn clear_size(&mut self, device: &Arc<dyn BlockDevice>) -> Vec<u32> {
         let mut res = Vec::new();
         let cur = Self::data_blocks_num(self.size);
         // 未来优化：将for移动到各个分支中去（目前设想可以用iter）
@@ -291,12 +292,7 @@ impl DiskInode {
         res
     }
 
-    pub(crate) fn read_at(
-        &self,
-        start: usize,
-        buf: &mut [u8],
-        device: &Arc<dyn BlockDevice>,
-    ) -> usize {
+    pub fn read_at(&self, start: usize, buf: &mut [u8], device: &Arc<dyn BlockDevice>) -> usize {
         let end = (start + buf.len()).min(self.size as usize);
         if end <= start {
             return 0;
@@ -335,12 +331,7 @@ impl DiskInode {
         read_size
     }
 
-    pub(crate) fn write_at(
-        &self,
-        start: usize,
-        buf: &[u8],
-        device: &Arc<dyn BlockDevice>,
-    ) -> usize {
+    pub fn write_at(&self, start: usize, buf: &[u8], device: &Arc<dyn BlockDevice>) -> usize {
         let end = (start + buf.len()).min(self.size as usize);
         if end <= start {
             return 0;
@@ -382,20 +373,20 @@ impl DiskInode {
 
 const NAME_LENGTH_LIMIT: usize = 27;
 
-pub(crate) struct DirEntry {
+pub struct DirEntry {
     name: [u8; NAME_LENGTH_LIMIT + 1],
     inode_id: u32,
 }
 
 impl DirEntry {
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             name: [0u8; NAME_LENGTH_LIMIT + 1],
             inode_id: 0,
         }
     }
 
-    pub(crate) fn new(name: &str, inode_id: u32) -> Self {
+    pub fn new(name: &str, inode_id: u32) -> Self {
         let mut cloned: [u8; NAME_LENGTH_LIMIT + 1] = [0u8; NAME_LENGTH_LIMIT + 1];
         let dst = &mut cloned[0..name.len()];
         dst.copy_from_slice(name.as_bytes());
@@ -405,7 +396,7 @@ impl DirEntry {
         }
     }
 
-    pub(crate) fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         unsafe {
             core::slice::from_raw_parts(
                 self as *const _ as usize as *const u8,
@@ -413,7 +404,7 @@ impl DirEntry {
             )
         }
     }
-    pub(crate) fn as_bytes_mut(&mut self) -> &mut [u8] {
+    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
         unsafe {
             core::slice::from_raw_parts_mut(
                 self as *const _ as usize as *mut u8,
@@ -422,7 +413,7 @@ impl DirEntry {
         }
     }
 
-    pub(crate) fn get_name(&self) -> &str {
+    pub fn get_name(&self) -> &str {
         for i in 0..size_of::<DirEntry>() {
             if self.name[i] == 0 {
                 return core::str::from_utf8(&self.name[0..i]).unwrap();
@@ -431,20 +422,20 @@ impl DirEntry {
         return core::str::from_utf8(&self.name).unwrap();
     }
 
-    pub(crate) fn get_inode(&self) -> u32 {
+    pub fn get_inode(&self) -> u32 {
         self.inode_id
     }
 }
 
-pub(crate) struct Inode {
-    pub(crate) block_id: usize,
-    pub(crate) block_offset: usize,
-    pub(crate) fs: Arc<Mutex<FileSystem>>,
-    pub(crate) device: Arc<dyn BlockDevice>,
+pub struct Inode {
+    pub block_id: usize,
+    pub block_offset: usize,
+    pub fs: Arc<Mutex<FileSystem>>,
+    pub device: Arc<dyn BlockDevice>,
 }
 
 impl Inode {
-    pub(crate) fn new(
+    pub fn new(
         block_id: usize,
         block_offset: usize,
         fs: Arc<Mutex<FileSystem>>,
@@ -458,7 +449,7 @@ impl Inode {
         }
     }
 
-    pub(crate) fn get_root_inode(fs: &Arc<Mutex<FileSystem>>) -> Self {
+    pub fn get_root_inode(fs: &Arc<Mutex<FileSystem>>) -> Self {
         let guard = fs.lock();
         let (root_block_id, root_block_offset) = guard.get_disk_inode_pos_by_id(0);
         Self {
@@ -469,7 +460,7 @@ impl Inode {
         }
     }
 
-    pub(crate) fn read_disk_inode<V>(&self, f: impl FnOnce(&DiskInode) -> V) -> V {
+    pub fn read_disk_inode<V>(&self, f: impl FnOnce(&DiskInode) -> V) -> V {
         BLOCK_CACHE_MANAGER
             .lock()
             .get_block(self.block_id, &self.device)
@@ -477,7 +468,7 @@ impl Inode {
             .read(self.block_offset, f)
     }
 
-    pub(crate) fn modify_disk_inode<V>(&self, f: impl FnOnce(&mut DiskInode) -> V) -> V {
+    pub fn modify_disk_inode<V>(&self, f: impl FnOnce(&mut DiskInode) -> V) -> V {
         BLOCK_CACHE_MANAGER
             .lock()
             .get_block(self.block_id, &self.device)
@@ -485,7 +476,7 @@ impl Inode {
             .modify(self.block_offset, f)
     }
 
-    pub(crate) fn find_inode_id(&self, name: &str, disk_inode: &DiskInode) -> Option<u32> {
+    pub fn find_inode_id(&self, name: &str, disk_inode: &DiskInode) -> Option<u32> {
         assert!(disk_inode.node_type == InodeType::Directory);
         let file_cnt = disk_inode.size as usize / size_of::<DirEntry>();
         let mut dir = DirEntry::empty();
@@ -501,7 +492,7 @@ impl Inode {
         None
     }
 
-    pub(crate) fn find(&self, name: &str) -> Option<Arc<Inode>> {
+    pub fn find(&self, name: &str) -> Option<Arc<Inode>> {
         self.read_disk_inode(|disk_inode| {
             self.find_inode_id(name, disk_inode).map(|inode_id| {
                 let (block_id, block_offset) = self.fs.lock().get_disk_inode_pos_by_id(inode_id);
@@ -515,7 +506,7 @@ impl Inode {
         })
     }
 
-    pub(crate) fn ls(&self) -> Vec<String> {
+    pub fn ls(&self) -> Vec<String> {
         let mut res = Vec::new();
         let _guard = self.fs.lock();
         self.read_disk_inode(|disk_inode| {
@@ -548,7 +539,7 @@ impl Inode {
         disk_inode.push_empty_blocks(new_size, block_vec, &self.device);
     }
 
-    pub(crate) fn create(&self, name: &str) -> Option<Arc<Inode>> {
+    pub fn create(&self, name: &str) -> Option<Arc<Inode>> {
         let mut fs = self.fs.lock();
         // 判断文件是否已存在
         if self
@@ -593,7 +584,7 @@ impl Inode {
         )))
     }
 
-    pub(crate) fn clear_data(&self) {
+    pub fn clear_data(&self) {
         let mut fs = self.fs.lock();
         self.modify_disk_inode(|disk_inode| {
             let need_dealloc = disk_inode.clear_size(&self.device);
@@ -607,12 +598,12 @@ impl Inode {
         });
     }
 
-    pub(crate) fn read_at(&self, start: usize, buf: &mut [u8]) -> usize {
+    pub fn read_at(&self, start: usize, buf: &mut [u8]) -> usize {
         let _guard = self.fs.lock();
         self.read_disk_inode(|disk_inode| disk_inode.read_at(start, buf, &self.device))
     }
 
-    pub(crate) fn write_at(&self, start: usize, buf: &[u8]) -> usize {
+    pub fn write_at(&self, start: usize, buf: &[u8]) -> usize {
         let mut fs = self.fs.lock();
         self.modify_disk_inode(|disk_inode| {
             if start + buf.len() > disk_inode.size as usize {
@@ -620,81 +611,6 @@ impl Inode {
             }
             disk_inode.write_at(start, buf, &self.device)
         })
-    }
-}
-
-pub(crate) struct OSInode {
-    readable: bool,
-    writeable: bool,
-    mutable: Mutex<OSInodeMutable>,
-}
-
-impl OSInode {
-    pub(crate) fn new(readable: bool, writeable: bool, inode: Arc<Inode>) -> Self {
-        Self {
-            readable,
-            writeable,
-            mutable: Mutex::new(OSInodeMutable { offset: 0, inode }),
-        }
-    }
-
-    #[allow(invalid_value)]
-    pub(crate) fn read_all(&self) -> Vec<u8> {
-        let mut inner = self.mutable.lock();
-        let mut buffer: [u8; BLOCK_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
-        let mut res = Vec::new();
-        loop {
-            let len = inner.inode.read_at(inner.offset, &mut buffer);
-            if len == 0 {
-                break;
-            }
-            res.extend_from_slice(&buffer);
-            inner.offset += len;
-        }
-        res
-    }
-}
-
-pub(crate) struct OSInodeMutable {
-    offset: usize,
-    inode: Arc<Inode>,
-}
-
-impl File for OSInode {
-    fn readable(&self) -> bool {
-        self.readable
-    }
-
-    fn writeable(&self) -> bool {
-        self.writeable
-    }
-
-    fn read(&self, mut buf: super::UserBuffer) -> usize {
-        let mut inner = self.mutable.lock();
-        let mut total_len = 0;
-        for slice in buf.iter_mut() {
-            let len = inner.inode.read_at(inner.offset, *slice);
-            if len == 0 {
-                break;
-            }
-            inner.offset += len;
-            total_len += len;
-        }
-        total_len
-    }
-
-    fn write(&self, buf: super::UserBuffer) -> usize {
-        let mut inner = self.mutable.lock();
-        let mut total_len = 0;
-        for slice in buf.iter() {
-            let len = inner.inode.write_at(inner.offset, *slice);
-            if len == 0 {
-                break;
-            }
-            inner.offset += len;
-            total_len += len;
-        }
-        total_len
     }
 }
 
@@ -709,34 +625,13 @@ bitflags! {
 }
 
 impl OpenFlags {
-    pub(crate) fn read_write(&self) -> (bool, bool) {
+    pub fn read_write(&self) -> (bool, bool) {
         if self.is_empty() {
             (true, false)
         } else if self.contains(Self::WRONLY) {
             (false, true)
         } else {
             (true, true)
-        }
-    }
-}
-
-pub(crate) fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
-    let (readable, writeable) = flags.read_write();
-    match ROOT_INODE.find(name) {
-        Some(inode) => {
-            if flags.contains(OpenFlags::TRUNC) {
-                inode.clear_data();
-            }
-            Some(Arc::new(OSInode::new(readable, writeable, inode)))
-        }
-        None => {
-            if flags.contains(OpenFlags::CREATE) {
-                ROOT_INODE
-                    .create(name)
-                    .map(|inode| Arc::new(OSInode::new(readable, writeable, inode)))
-            } else {
-                None
-            }
         }
     }
 }
