@@ -193,13 +193,13 @@ impl DiskInode {
         new_blocks: Vec<u32>,
         device: &Arc<dyn BlockDevice>,
     ) {
-        let cur = Self::data_blocks_num(self.size);
-        let new = Self::data_blocks_num(new_size);
-        let mut iter = new_blocks.into_iter();
-        assert!(new - cur == iter.len());
+        let cur = Self::total_blocks_num(self.size);
+        let new = Self::total_blocks_num(new_size);
+        let mut iter = new_blocks.into_iter().peekable();
+        assert_eq!(new - cur, iter.len());
+        let mut index = cur;
         // 未来优化：将for移动到各个分支中去（目前设想可以用iter）
-        for i in 0..(new - cur) {
-            let index = cur + i;
+        while iter.peek().is_some() {
             if index < INODE_DIRECT_COUNT {
                 self.direct_zone[index] = iter.next().unwrap();
             } else if index < INODE_DIRECT_COUNT + INODE_INDIRECT_COUNT {
@@ -236,8 +236,10 @@ impl DiskInode {
                             },
                         )
                     });
+            index += 1;
             }
         }
+        self.size = new_size;
     }
 
     pub fn clear_size(&mut self, device: &Arc<dyn BlockDevice>) -> Vec<u32> {
@@ -352,13 +354,14 @@ impl DiskInode {
                 dst.copy_from_slice(src);
             });
         let mut write_size = single_size;
-
+        
+        drop(guard);
         for block_offset in (start_block + 1)..end_block {
             let id = self.get_block_id(block_offset as u32, device);
             let single_size =
                 ((block_offset + 1) * BLOCK_SIZE).min(end) - block_offset * BLOCK_SIZE;
             let src = &buf[write_size..(write_size + single_size)];
-            guard
+            BLOCK_CACHE_MANAGER.lock()
                 .get_block(id as usize, device)
                 .lock()
                 .modify(0, |data: &mut [u8; BLOCK_SIZE]| {
@@ -469,11 +472,10 @@ impl Inode {
     }
 
     pub fn modify_disk_inode<V>(&self, f: impl FnOnce(&mut DiskInode) -> V) -> V {
-        BLOCK_CACHE_MANAGER
-            .lock()
-            .get_block(self.block_id, &self.device)
-            .lock()
-            .modify(self.block_offset, f)
+        let mut mgr_guard = BLOCK_CACHE_MANAGER.lock();
+        let block = mgr_guard.get_block(self.block_id, &self.device);
+        drop(mgr_guard);
+        block.lock().modify(self.block_offset, f)
     }
 
     pub fn find_inode_id(&self, name: &str, disk_inode: &DiskInode) -> Option<u32> {

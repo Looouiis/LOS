@@ -82,7 +82,9 @@ impl FileSystem {
             inode_area_start_block: 1 + inode_bitmap_block_num,
             data_area_start_block: (1 + inode_total_block_num + data_bitmap_block_num) as u32,
         };
+        drop(guard);        // todo: 想办法消除掉drop的开销
         assert!(fs.inode_bitmap.alloc(&device) == Some(0));
+        let mut guard = BLOCK_CACHE_MANAGER.lock();
         let (block_id, block_offset) = fs.get_disk_inode_pos_by_id(0);
         guard.get_block(block_id as usize, &device).lock().modify(
             block_offset,

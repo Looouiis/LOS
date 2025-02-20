@@ -35,6 +35,15 @@ enum Commands {
     Asm(AsmArgs),
 }
 
+fn main() {
+    let build = BuildArgs {
+        target: Some("riscv".to_string()),
+        debug: false,
+        pack: true,
+    };
+    build.build(true);
+}
+
 #[derive(Args, Default)]
 struct BuildArgs {
     /// 选择构建平台
@@ -49,8 +58,8 @@ struct BuildArgs {
 }
 
 impl BuildArgs {
-    fn build_base(&self) -> PathBuf {
-        let target = match &self.target {
+    fn get_target(&self) -> &str {
+        match &self.target {
             Some(string) => {
                 if string == "riscv" {
                     return "riscv64gc-unknown-none-elf".into();
@@ -59,23 +68,11 @@ impl BuildArgs {
                 }
             }
             None => "riscv64gc-unknown-none-elf",
-        };
-        Cargo::build()
-            .package("user")
-            .release()
-            .target(target)
-            .invoke();
-        if self.pack {
-
         }
-        Cargo::build()
-            .package("los")
-            // .conditional(!self.debug, |cargo| {
-            // cargo.release();
-            // })
-            .release()
-            .target(target)
-            .invoke();
+    }
+
+    fn base_path(&self) -> PathBuf {
+        let target = self.get_target();
         project_path()
             .join("target")
             .join(target)
@@ -83,8 +80,34 @@ impl BuildArgs {
             .join("release")
     }
 
-    fn build(&self, binary: bool) -> PathBuf {
-        let elf = self.build_base().join("los");
+    fn build(&self, binary: bool) -> (PathBuf, PathBuf) {
+        let target = self.get_target();
+        let fs_img = project_path()
+            .join("target")
+            .join(target)
+            .join("release").join("fs.img");
+        Cargo::build()
+            .package("user")
+            .release()
+            .target(target)
+            .invoke();
+        // if self.pack {
+            self.fs_pack(&fs_img);
+        // }
+        // Cargo::build()
+        //     .package("los")
+        //     // .conditional(!self.debug, |cargo| {
+        //     // cargo.release();
+        //     // })
+        //     .release()
+        //     .target(target)
+        //     .invoke();
+        let elf = project_path()
+            .join("target")
+            .join(target)
+            // .join(if self.debug { "debug" } else { "release" })
+            .join("release")
+            .join("los");
         if binary {
             let bin = elf.with_extension("bin");
             BinUtil::objcopy()
@@ -92,9 +115,9 @@ impl BuildArgs {
                 .args(["--strip-all", "-O", "binary"])
                 .arg(&bin)
                 .invoke();
-            bin
+            (bin, fs_img)
         } else {
-            elf
+            (elf, fs_img)
         }
     }
 }
@@ -108,8 +131,7 @@ struct RunArgs {
 impl RunArgs {
     fn run(&self) {
         let sbi = project_path().join("sbi").join("rustsbi-qemu.bin");
-        let los = BuildArgs::build(&self.build, true);
-        let fs_img = BuildArgs::build_base(&self.build).join("fs.img");
+        let (los, fs_img) = BuildArgs::build(&self.build, true);
         let system = Qemu::system("riscv64")
             .args(["-machine", "virt"])
             .arg("-nographic")
@@ -139,7 +161,7 @@ struct AsmArgs {
 
 impl AsmArgs {
     fn dump(self) {
-        let elf = self.build.build(false);
+        let (elf, _) = self.build.build(false);
         let out = project_path()
             .join("target")
             .join(self.name.unwrap_or(format!(
@@ -151,17 +173,17 @@ impl AsmArgs {
     }
 }
 
-fn main() {
-    use Commands::*;
-    match Cli::parse().command {
-        Build(args) => {
-            args.build(true);
-        }
-        Run(args) => {
-            args.run();
-        }
-        Asm(args) => {
-            args.dump();
-        }
-    }
-}
+// fn main() {
+//     use Commands::*;
+//     match Cli::parse().command {
+//         Build(args) => {
+//             args.build(true);
+//         }
+//         Run(args) => {
+//             args.run();
+//         }
+//         Asm(args) => {
+//             args.dump();
+//         }
+//     }
+// }
