@@ -38,14 +38,14 @@ impl BlockCache {
     }
 
     pub fn get_ref<T: Sized>(&self, offset: usize) -> &T {
-        assert!(size_of::<T>() + offset <= BLOCK_SIZE);
-        let ptr = self.get_ptr(offset) as *const T;
+        assert!(size_of::<T>() * offset <= BLOCK_SIZE);
+        let ptr = self.get_ptr(offset * size_of::<T>()) as *const T;
         unsafe { &(*ptr) }
     }
 
     pub fn get_mut<T: Sized>(&mut self, offset: usize) -> &mut T {
-        assert!(size_of::<T>() + offset <= BLOCK_SIZE);
-        let ptr = self.get_ptr(offset) as *mut T;
+        assert!(size_of::<T>() * offset <= BLOCK_SIZE);
+        let ptr = self.get_ptr(offset * size_of::<T>()) as *mut T;
         self.dirt = true;
         unsafe { &mut (*ptr) }
     }
@@ -56,10 +56,12 @@ impl BlockCache {
         }
     }
 
+    // 注意，offset是以T为单位的偏移量，不是直接加上的
     pub fn read<T, V>(&self, offset: usize, f: impl FnOnce(&T) -> V) -> V {
         f(self.get_ref(offset))
     }
 
+    // 注意，offset是以T为单位的偏移量，不是直接加上的
     pub fn modify<T, V>(&mut self, offset: usize, f: impl FnOnce(&mut T) -> V) -> V {
         f(self.get_mut(offset))
     }

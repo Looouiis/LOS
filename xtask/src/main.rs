@@ -35,15 +35,6 @@ enum Commands {
     Asm(AsmArgs),
 }
 
-fn main() {
-    let build = BuildArgs {
-        target: Some("riscv".to_string()),
-        debug: false,
-        pack: true,
-    };
-    build.build(true);
-}
-
 #[derive(Args, Default)]
 struct BuildArgs {
     /// 选择构建平台
@@ -94,14 +85,14 @@ impl BuildArgs {
         // if self.pack {
             self.fs_pack(&fs_img);
         // }
-        // Cargo::build()
-        //     .package("los")
-        //     // .conditional(!self.debug, |cargo| {
-        //     // cargo.release();
-        //     // })
-        //     .release()
-        //     .target(target)
-        //     .invoke();
+        Cargo::build()
+            .package("los")
+            // .conditional(!self.debug, |cargo| {
+            // cargo.release();
+            // })
+            .release()
+            .target(target)
+            .invoke();
         let elf = project_path()
             .join("target")
             .join(target)
@@ -173,17 +164,17 @@ impl AsmArgs {
     }
 }
 
-// fn main() {
-//     use Commands::*;
-//     match Cli::parse().command {
-//         Build(args) => {
-//             args.build(true);
-//         }
-//         Run(args) => {
-//             args.run();
-//         }
-//         Asm(args) => {
-//             args.dump();
-//         }
-//     }
-// }
+fn main() {
+    use Commands::*;
+    match Cli::parse().command {
+        Build(args) => {
+            args.build(true);
+        }
+        Run(args) => {
+            args.run();
+        }
+        Asm(args) => {
+            args.dump();
+        }
+    }
+}

@@ -82,7 +82,7 @@ impl FileSystem {
             inode_area_start_block: 1 + inode_bitmap_block_num,
             data_area_start_block: (1 + inode_total_block_num + data_bitmap_block_num) as u32,
         };
-        drop(guard);        // todo: 想办法消除掉drop的开销
+        drop(guard); // todo: 想办法消除掉drop的开销
         assert!(fs.inode_bitmap.alloc(&device) == Some(0));
         let mut guard = BLOCK_CACHE_MANAGER.lock();
         let (block_id, block_offset) = fs.get_disk_inode_pos_by_id(0);
@@ -121,7 +121,8 @@ impl FileSystem {
         let bit_length = inode_id * size_of::<DiskInode>() as u32;
         let block = self.inode_area_start_block + bit_length / BLOCK_SIZE as u32;
         let offset = bit_length as usize % BLOCK_SIZE;
-        (block, offset)
+        assert_eq!(offset % size_of::<DiskInode>(), 0);
+        (block, offset / size_of::<DiskInode>())
     }
 
     // fn get_block_id_by_data_id(&self, data_block_id: u32) -> u32 {
@@ -133,7 +134,7 @@ impl FileSystem {
     }
 
     fn alloc_data_id(&mut self) -> u32 {
-        self.data_bitmap.alloc(&self.device).unwrap() as u32
+        self.data_bitmap.alloc(&self.device).unwrap() as u32 + self.data_area_start_block
     }
 
     // fn dealloc_data_id(&mut self, data_id: u32) {

@@ -236,8 +236,8 @@ impl DiskInode {
                             },
                         )
                     });
-            index += 1;
             }
+            index += 1;
         }
         self.size = new_size;
     }
@@ -301,27 +301,29 @@ impl DiskInode {
         }
         let start_block = start / BLOCK_SIZE;
         let end_block = end / BLOCK_SIZE;
-        let mut guard = BLOCK_CACHE_MANAGER.lock();
 
         // 展开首次，减少循环中分支判断
         let id = self.get_block_id(start_block as u32, device);
         let single_size = ((start_block + 1) * BLOCK_SIZE).min(end) - start;
+        let mut guard = BLOCK_CACHE_MANAGER.lock();
         guard
             .get_block(id as usize, device)
             .lock()
             .read(0, |data: &[u8; BLOCK_SIZE]| {
-                let src = &data[start..start + single_size];
+                let src = &data[(start % BLOCK_SIZE)..(start % BLOCK_SIZE) + single_size];
                 let dst = &mut buf[0..single_size];
                 dst.copy_from_slice(src);
             });
         let mut read_size = single_size;
 
+        drop(guard);
         for block_offset in (start_block + 1)..end_block {
             let id = self.get_block_id(block_offset as u32, device);
             let single_size =
                 ((block_offset + 1) * BLOCK_SIZE).min(end) - block_offset * BLOCK_SIZE;
             let dst = &mut buf[read_size..(read_size + single_size)];
-            guard
+            BLOCK_CACHE_MANAGER
+                .lock()
                 .get_block(id as usize, device)
                 .lock()
                 .read(0, |data: &[u8; BLOCK_SIZE]| {
@@ -340,28 +342,29 @@ impl DiskInode {
         }
         let start_block = start / BLOCK_SIZE;
         let end_block = end / BLOCK_SIZE;
-        let mut guard = BLOCK_CACHE_MANAGER.lock();
 
         // 展开首次，减少循环中分支判断
         let id = self.get_block_id(start_block as u32, device);
         let single_size = ((start_block + 1) * BLOCK_SIZE).min(end) - start;
+        let mut guard = BLOCK_CACHE_MANAGER.lock();
         guard
             .get_block(id as usize, device)
             .lock()
             .modify(0, |data: &mut [u8; BLOCK_SIZE]| {
                 let src = &buf[0..single_size];
-                let dst = &mut data[start..start + single_size];
+                let dst = &mut data[(start % BLOCK_SIZE)..(start % BLOCK_SIZE) + single_size];
                 dst.copy_from_slice(src);
             });
         let mut write_size = single_size;
-        
+
         drop(guard);
         for block_offset in (start_block + 1)..end_block {
             let id = self.get_block_id(block_offset as u32, device);
             let single_size =
                 ((block_offset + 1) * BLOCK_SIZE).min(end) - block_offset * BLOCK_SIZE;
             let src = &buf[write_size..(write_size + single_size)];
-            BLOCK_CACHE_MANAGER.lock()
+            BLOCK_CACHE_MANAGER
+                .lock()
                 .get_block(id as usize, device)
                 .lock()
                 .modify(0, |data: &mut [u8; BLOCK_SIZE]| {
@@ -464,11 +467,10 @@ impl Inode {
     }
 
     pub fn read_disk_inode<V>(&self, f: impl FnOnce(&DiskInode) -> V) -> V {
-        BLOCK_CACHE_MANAGER
-            .lock()
-            .get_block(self.block_id, &self.device)
-            .lock()
-            .read(self.block_offset, f)
+        let mut mgr_guard = BLOCK_CACHE_MANAGER.lock();
+        let block = mgr_guard.get_block(self.block_id, &self.device);
+        drop(mgr_guard);
+        block.lock().read(self.block_offset, f)
     }
 
     pub fn modify_disk_inode<V>(&self, f: impl FnOnce(&mut DiskInode) -> V) -> V {
