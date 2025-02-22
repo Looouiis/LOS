@@ -3,12 +3,12 @@ use core::fmt::Write;
 
 use crate::{
     arch_relate::ecall::{getch, putch},
+    fs::{self, File},
     mem::{
         address::{StepByOne, VirAddr},
         page_table::ROTable,
     },
-    process::{switch_task, RestoreBehavior},
-    PROCESS_MANAGER,
+    process::switch_task,
 };
 
 struct Stdout;
@@ -69,8 +69,8 @@ macro_rules! println {
     }};
 }
 
-const STDOUT: usize = 1;
-const STDIN: usize = 0;
+// const STDOUT: usize = 1;
+// const STDIN: usize = 0;
 
 pub(crate) fn get_user_buf(
     page_table: &ROTable,
@@ -96,28 +96,67 @@ pub(crate) fn get_user_buf(
     v
 }
 
-pub(crate) fn linux_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehavior {
-    match fd {
-        STDOUT => {
-            let table = ROTable::from_token(PROCESS_MANAGER.get().get_current_token());
-            let slice = get_user_buf(&table, buf, len);
-            for s in slice {
-                let str = core::str::from_utf8(s).unwrap();
-                print!("{}", str);
-            }
-            RestoreBehavior::DirectReturn(len)
-        }
-        _ => panic!("unsupported fd type: {}", fd),
-    }
-}
+// pub(crate) fn linux_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehavior {
+//     match fd {
+//         STDOUT => {
+//             let table = ROTable::from_token(PROCESS_MANAGER.get().get_current_token());
+//             let slice = get_user_buf(&table, buf, len);
+//             for s in slice {
+//                 let str = core::str::from_utf8(s).unwrap();
+//                 print!("{}", str);
+//             }
+//             RestoreBehavior::DirectReturn(len)
+//         }
+//         _ => panic!("unsupported fd type: {}", fd),
+//     }
+// }
 
-pub(crate) fn sys_read(fd: usize, buf: *mut u8, len: usize) -> RestoreBehavior {
-    let mut cnt = 0;
-    match fd {
-        STDIN => {
-            let token = PROCESS_MANAGER.get().get_current_token();
-            let page_table = ROTable::from_token(token);
-            for offset in 0..len {
+// pub(crate) fn sys_read(fd: usize, buf: *mut u8, len: usize) -> RestoreBehavior {
+//     let mut cnt = 0;
+//     match fd {
+//         STDIN => {
+//             let token = PROCESS_MANAGER.get().get_current_token();
+//             let page_table = ROTable::from_token(token);
+//             for offset in 0..len {
+//                 let mut ch;
+//                 loop {
+//                     ch = getch();
+//                     if ch == 0 {
+//                         switch_task();
+//                     } else {
+//                         break;
+//                     }
+//                 }
+//                 unsafe {
+//                     let va = VirAddr::from(buf.add(offset) as usize);
+//                     let pa = page_table.va_to_pa(va).unwrap();
+//                     (usize::from(pa) as *mut u8).write_volatile(ch);
+//                 }
+//                 cnt += 1;
+//             }
+//         }
+//         fd => {
+//             fs::sys_read(fd, buf, len);
+//         }
+//     }
+//     RestoreBehavior::DirectReturn(cnt)
+// }
+
+pub(crate) struct Stdio;
+
+impl File for Stdio {
+    fn readable(&self) -> bool {
+        true
+    }
+
+    fn writeable(&self) -> bool {
+        true
+    }
+
+    fn read(&self, buf: fs::UserBuffer) -> usize {
+        let mut len = 0;
+        for slice in buf {
+            for pa in slice {
                 let mut ch;
                 loop {
                     ch = getch();
@@ -127,15 +166,20 @@ pub(crate) fn sys_read(fd: usize, buf: *mut u8, len: usize) -> RestoreBehavior {
                         break;
                     }
                 }
-                unsafe {
-                    let va = VirAddr::from(buf.add(offset) as usize);
-                    let pa = page_table.va_to_pa(va).unwrap();
-                    (usize::from(pa) as *mut u8).write_volatile(ch);
-                }
-                cnt += 1;
+                *pa = ch;
+                len += 1;
             }
         }
-        _ => panic!("unsupported fd type: {}", fd),
+        len
     }
-    RestoreBehavior::DirectReturn(cnt)
+
+    fn write(&self, buf: fs::UserBuffer) -> usize {
+        let mut len = 0;
+        for slice in buf {
+            let str = core::str::from_utf8(&slice).unwrap();
+            print!("{}", str);
+            len += str.len();
+        }
+        len
+    }
 }

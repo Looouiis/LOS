@@ -80,6 +80,9 @@ impl Heap {
         let size = layout.size().next_power_of_two();
         let idx = size.trailing_zeros() as usize;
         for i in idx..=LINK_LIST_NUM {
+            if i == LINK_LIST_NUM {
+                return ptr::null_mut(); // 已经没有可用空间了
+            }
             if !self.usize_list[i].is_empty() {
                 for j in (idx + 1..=i).rev() {
                     match self.usize_list[j].pop() {
@@ -92,9 +95,6 @@ impl Heap {
                     }
                 }
                 break;
-            }
-            if i == LINK_LIST_NUM {
-                return ptr::null_mut(); // 已经没有可用空间了
             }
         }
         assert!(!self.usize_list[idx].is_empty());

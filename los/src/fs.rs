@@ -13,6 +13,7 @@ use crate::{
     drivers::block::BLOCK_DEVICE,
     io::get_user_buf,
     mem::{address::VirAddr, page_table::ROTable},
+    process::RestoreBehavior,
     PROCESS_MANAGER,
 };
 
@@ -23,7 +24,7 @@ lazy_static! {
     });
 }
 
-type UserBuffer = Vec<&'static mut [u8]>;
+pub(crate) type UserBuffer = Vec<&'static mut [u8]>;
 
 pub trait File {
     fn readable(&self) -> bool;
@@ -128,7 +129,7 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
     }
 }
 
-pub(crate) fn sys_open(path: *const u8, flags: u32) -> isize {
+pub(crate) fn sys_open(path: *const u8, flags: u32) -> RestoreBehavior {
     let openf_lags = OpenFlags::from_bits(flags).unwrap();
     let mut name = String::new();
     let mgr = PROCESS_MANAGER.get();
@@ -148,47 +149,53 @@ pub(crate) fn sys_open(path: *const u8, flags: u32) -> isize {
             let mut guard = process.lock();
             let fd = guard.alloc_fd();
             guard.set_fd(fd, inode);
-            fd as isize
+            RestoreBehavior::DirectReturn(fd)
         }
-        None => -1,
+        None => RestoreBehavior::DirectReturn(-1isize as usize),
     }
 }
 
-pub(crate) fn sys_close(fd: usize) -> isize {
+pub(crate) fn sys_close(fd: usize) -> RestoreBehavior {
     let mgr = PROCESS_MANAGER.get();
     let process = mgr.get_process().as_ref().unwrap();
     let mut guard = process.lock();
     if guard.dealloc_fd(fd) {
-        0
+        RestoreBehavior::DirectReturn(0)
     } else {
-        -1
+        RestoreBehavior::DirectReturn(-1isize as usize)
     }
 }
 
-pub(crate) fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
+pub(crate) fn sys_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehavior {
     let mgr = PROCESS_MANAGER.get();
     let process = mgr.get_process().as_ref().unwrap();
     let guard = process.lock();
     let table = ROTable::from_token(guard.get_token());
     match guard.get_fd(fd) {
         Some(file) => {
+            let file = file.clone();
+            drop(guard);
+            drop(mgr);
             let translated_buffer = get_user_buf(&table, buf, len);
-            file.write(translated_buffer) as isize
+            RestoreBehavior::DirectReturn(file.write(translated_buffer))
         }
-        None => -1,
+        None => RestoreBehavior::DirectReturn(-1isize as usize),
     }
 }
 
-pub(crate) fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
+pub(crate) fn sys_read(fd: usize, buf: *const u8, len: usize) -> RestoreBehavior {
     let mgr = PROCESS_MANAGER.get();
     let process = mgr.get_process().as_ref().unwrap();
     let guard = process.lock();
     let table = ROTable::from_token(guard.get_token());
     match guard.get_fd(fd) {
         Some(file) => {
+            let file = file.clone();
+            drop(guard);
+            drop(mgr);
             let translated_buffer = get_user_buf(&table, buf, len);
-            file.read(translated_buffer) as isize
+            RestoreBehavior::DirectReturn(file.read(translated_buffer))
         }
-        None => -1,
+        None => RestoreBehavior::DirectReturn(-1isize as usize),
     }
 }

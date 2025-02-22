@@ -3,6 +3,7 @@ use alloc::{
     collections::{btree_map::BTreeMap, linked_list::LinkedList},
     string::String,
     sync::{Arc, Weak},
+    vec,
     vec::Vec,
 };
 use core::{
@@ -23,6 +24,7 @@ use crate::{
     },
     config::TRAP_CONTEXT,
     fs::{open_file, File},
+    io::Stdio,
     mem::{
         address::{PhyPageNum, VirAddr},
         memory_set::{MemorySet, KERNEL_SPACE},
@@ -168,6 +170,7 @@ impl Process {
         ctx.kernel_sp = kernel_stack as usize + KERNAL_STACK_SIZE;
         let mut process_ctx = ProcessContext::new();
         process_ctx.init(trap_return as usize, ctx.kernel_sp);
+        let stdio = Arc::new(Stdio);
         Arc::new(Mutex::new(Self {
             pid: PID_ALLOCATOR.lock().alloc().unwrap(),
             status: State::Ready,
@@ -177,7 +180,7 @@ impl Process {
             children: Vec::new(),
             father: None,
             exit_code: None,
-            fd_table: Vec::new(),
+            fd_table: vec![Some(stdio.clone()), Some(stdio.clone())],
         }))
     }
 
@@ -229,6 +232,7 @@ impl Process {
         let mut process_ctx = ProcessContext::new();
         process_ctx.init(trap_return as usize, ctx.kernel_sp);
         let status = guard.status;
+        let fd_table = guard.fd_table.iter().map(|file| file.clone()).collect();
         let res = Arc::new(Mutex::new(Self {
             pid: PID_ALLOCATOR.lock().alloc().unwrap(),
             status,
@@ -238,7 +242,7 @@ impl Process {
             children: Vec::new(),
             father: Some(Arc::downgrade(from)),
             exit_code: None,
-            fd_table: Vec::new(),
+            fd_table,
         }));
         guard.children.push(Arc::downgrade(&res));
         res

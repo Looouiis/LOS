@@ -1,7 +1,7 @@
 use syscall_spec::*;
 
 use crate::{
-    io::{linux_write, sys_read},
+    fs::{sys_read, sys_write},
     process::{
         sys_waitpid,
         syscall_fn::{exit, sys_exec, sys_fork, sys_yield},
@@ -11,7 +11,7 @@ use crate::{
 
 pub(crate) fn syscall(id: usize, args: [usize; 3]) -> RestoreBehavior {
     match id {
-        SYSCALL_WIRTE => linux_write(args[0], args[1] as *const u8, args[2]),
+        SYSCALL_WIRTE => sys_write(args[0], args[1] as *const u8, args[2]),
         SYSCALL_EXIT => exit(args[0]),
         SYSCALL_YIELD => sys_yield(),
         SYSCALL_FORK => sys_fork(),
