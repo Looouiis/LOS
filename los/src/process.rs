@@ -12,9 +12,9 @@ use core::{
     cmp::min,
     ops::Deref,
 };
-use fs::structure::OpenFlags;
 use lazy_static::lazy_static;
 use spin::mutex::Mutex;
+use syscall_spec::fs::FileFlags;
 
 use crate::{
     arch_relate::{
@@ -415,7 +415,7 @@ impl ProcessManager {
     }
 
     pub(crate) fn add_task(&mut self, name: &str) {
-        match /* self.get_elf_by_name(name) */ open_file(name, OpenFlags::RDONLY).map(|file| file.read_all()) {
+        match /* self.get_elf_by_name(name) */ open_file(name, FileFlags::RDONLY).map(|file| file.read_all()) {
             Some(data) => {
                 let process = Process::new(data.as_slice());
                 match self.current_program {
@@ -443,6 +443,7 @@ impl ProcessManager {
     //     }
     // }
 
+    #[allow(unused)]
     // index范围：[0, program_num)
     unsafe fn get_program_elf_bytes(&self, index: usize) -> &'static [u8] {
         let ptr = _num_program as usize as *const usize;

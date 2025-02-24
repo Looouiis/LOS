@@ -1,13 +1,10 @@
 use core::mem::MaybeUninit;
 
 use alloc::{string::String, sync::Arc, vec::Vec};
-use fs::{
-    config::BLOCK_SIZE,
-    structure::{Inode, OpenFlags},
-    FileSystem,
-};
+use fs::{config::BLOCK_SIZE, structure::Inode, FileSystem};
 use lazy_static::lazy_static;
 use spin::Mutex;
+use syscall_spec::fs::FileFlags;
 
 use crate::{
     drivers::block::BLOCK_DEVICE,
@@ -80,6 +77,9 @@ impl File for OSInode {
     }
 
     fn read(&self, mut buf: UserBuffer) -> usize {
+        if !self.readable() {
+            return -1isize as usize;
+        }
         let mut inner = self.mutable.lock();
         let mut total_len = 0;
         for slice in buf.iter_mut() {
@@ -94,6 +94,9 @@ impl File for OSInode {
     }
 
     fn write(&self, buf: UserBuffer) -> usize {
+        if !self.writeable() {
+            return -1isize as usize;
+        }
         let mut inner = self.mutable.lock();
         let mut total_len = 0;
         for slice in buf.iter() {
@@ -108,17 +111,17 @@ impl File for OSInode {
     }
 }
 
-pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
+pub fn open_file(name: &str, flags: FileFlags) -> Option<Arc<OSInode>> {
     let (readable, writeable) = flags.read_write();
     match ROOT_INODE.find(name) {
         Some(inode) => {
-            if flags.contains(OpenFlags::TRUNC) {
+            if flags.contains(FileFlags::TRUNC) {
                 inode.clear_data();
             }
             Some(Arc::new(OSInode::new(readable, writeable, inode)))
         }
         None => {
-            if flags.contains(OpenFlags::CREATE) {
+            if flags.contains(FileFlags::CREATE) {
                 ROOT_INODE
                     .create(name)
                     .map(|inode| Arc::new(OSInode::new(readable, writeable, inode)))
@@ -130,18 +133,19 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
 }
 
 pub(crate) fn sys_open(path: *const u8, flags: u32) -> RestoreBehavior {
-    let openf_lags = OpenFlags::from_bits(flags).unwrap();
+    let openf_lags = FileFlags::from_bits(flags).unwrap();
     let mut name = String::new();
     let mgr = PROCESS_MANAGER.get();
     let table = ROTable::from_token(mgr.get_current_token());
-    let va = VirAddr::from(path as usize);
+    let mut va = VirAddr::from(path as usize);
     loop {
-        let pa = table.va_to_pa(va).unwrap();
-        let ch = unsafe { *(pa.0 as *const char) };
-        if ch == '\0' {
+        let pa = table.va_to_pa(va).unwrap().0 as *const u8;
+        let ch = unsafe { pa.read_volatile() };
+        if ch == b'\0' {
             break;
         }
-        name.push(ch);
+        va.0 += 1;
+        name.push(ch as char);
     }
     match open_file(name.as_str(), openf_lags) {
         Some(inode) => {

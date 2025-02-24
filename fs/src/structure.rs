@@ -1,7 +1,6 @@
 extern crate alloc;
 
 use alloc::{string::String, sync::Arc, vec::Vec};
-use bitflags::bitflags;
 use spin::{Mutex, MutexGuard};
 
 use crate::config::BLOCK_SIZE;
@@ -393,6 +392,7 @@ impl DirEntry {
     }
 
     pub fn new(name: &str, inode_id: u32) -> Self {
+        assert!(name.len() < NAME_LENGTH_LIMIT, "name {name} too long");
         let mut cloned: [u8; NAME_LENGTH_LIMIT + 1] = [0u8; NAME_LENGTH_LIMIT + 1];
         let dst = &mut cloned[0..name.len()];
         dst.copy_from_slice(name.as_bytes());
@@ -615,27 +615,5 @@ impl Inode {
             }
             disk_inode.write_at(start, buf, &self.device)
         })
-    }
-}
-
-bitflags! {
-    pub struct OpenFlags: u32 {
-        const RDONLY = 0;
-        const WRONLY = 1 << 0;
-        const RDWR = 1 << 1;
-        const CREATE = 1 << 9;
-        const TRUNC = 1 << 10;
-    }
-}
-
-impl OpenFlags {
-    pub fn read_write(&self) -> (bool, bool) {
-        if self.is_empty() {
-            (true, false)
-        } else if self.contains(Self::WRONLY) {
-            (false, true)
-        } else {
-            (true, true)
-        }
     }
 }

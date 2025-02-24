@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use alloc::{slice, vec::Vec};
-use fs::structure::OpenFlags;
+use syscall_spec::fs::FileFlags;
 
 use crate::{
     arch_relate::disable_kernel_interrupt,
@@ -53,7 +53,7 @@ pub(crate) fn sys_exec(buf: *const u8, len: usize) -> RestoreBehavior {
         None => return RestoreBehavior::DirectReturn(-1isize as usize),
     };
     let str = core::str::from_utf8(slice).unwrap();
-    match /* mgr.get_elf_by_name(str) */ open_file(str, OpenFlags::RDONLY).map(|file| file.read_all()) {
+    match /* mgr.get_elf_by_name(str) */ open_file(str, FileFlags::RDONLY).map(|file| file.read_all()) {
         Some(data) => {
             match mgr.current_program.as_mut() {
                 Some(process) => {

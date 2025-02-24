@@ -1,7 +1,7 @@
 use syscall_spec::*;
 
 use crate::{
-    fs::{sys_read, sys_write},
+    fs::{sys_close, sys_open, sys_read, sys_write},
     process::{
         sys_waitpid,
         syscall_fn::{exit, sys_exec, sys_fork, sys_yield},
@@ -18,6 +18,8 @@ pub(crate) fn syscall(id: usize, args: [usize; 3]) -> RestoreBehavior {
         SYSCALL_EXEC => sys_exec(args[0] as *const u8, args[1]),
         SYSCALL_WAIT_PID => sys_waitpid(args[0] as isize, args[1] as *mut i32),
         SYSCALL_READ => sys_read(args[0], args[1] as *mut u8, args[2]),
+        SYSCALL_OPEN => sys_open(args[0] as *const u8, args[1] as u32),
+        SYSCALL_CLOSE => sys_close(args[0] as usize),
         GET_TASK_INFO => write_task(args[0] as *mut usize, args[1] as *mut u8, args[2]),
         _ => {
             log!("unsupported syscall: {}", id);

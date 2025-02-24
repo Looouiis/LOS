@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod fs;
+
 pub const SYSCALL_WIRTE: usize = 64;
 pub const SYSCALL_EXIT: usize = 93;
 pub const SYSCALL_YIELD: usize = 124;
