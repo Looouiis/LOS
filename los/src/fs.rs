@@ -15,10 +15,11 @@ use crate::{
 };
 
 lazy_static! {
-    pub static ref ROOT_INODE: Arc<Inode> = Arc::new({
-        let fs = FileSystem::open(BLOCK_DEVICE.clone());
-        Inode::get_root_inode(&fs)
-    });
+    pub static ref FILE_SYSTEM: Arc<Mutex<FileSystem>> = FileSystem::open(BLOCK_DEVICE.clone());
+}
+
+lazy_static! {
+    pub static ref ROOT_INODE: Arc<Inode> = Arc::new(Inode::get_root_inode(&FILE_SYSTEM));
 }
 
 pub(crate) type UserBuffer = Vec<&'static mut [u8]>;

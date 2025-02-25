@@ -24,13 +24,15 @@ mod timer;
 
 mod temp_test;
 
-use core::arch::global_asm;
+use ::fs::config::BLOCK_SIZE;
+use fs::FILE_SYSTEM;
+// use core::arch::global_asm;
 use power::shutdown;
 use process::{run_program, PROCESS_MANAGER};
 
 // 由于_start与架构相关，所以具体请移步arch_relate模块
 
-global_asm!(include_str!("link_program.S"));
+// global_asm!(include_str!("link_program.S"));
 
 const BANNER: &str = r#"
 ______                          _______________        
@@ -58,6 +60,10 @@ fn rust_main() {
     println!("{BANNER}");
     timer::init();
     mem::init();
+    trace!(
+        "Data block num {}",
+        FILE_SYSTEM.lock().data_bitmap.get_block_num() * BLOCK_SIZE * 8
+    );
     println!();
 
     PROCESS_MANAGER.get().print_info();

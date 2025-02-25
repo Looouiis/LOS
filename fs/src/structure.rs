@@ -102,6 +102,10 @@ impl BitMap {
                 block[unit_idx] &= !(1u64 << unit_offset);
             })
     }
+
+    pub fn get_block_num(&self) -> usize {
+        self.block_num
+    }
 }
 
 #[derive(PartialEq)]

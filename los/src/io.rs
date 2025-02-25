@@ -96,52 +96,6 @@ pub(crate) fn get_user_buf(
     v
 }
 
-// pub(crate) fn linux_write(fd: usize, buf: *const u8, len: usize) -> RestoreBehavior {
-//     match fd {
-//         STDOUT => {
-//             let table = ROTable::from_token(PROCESS_MANAGER.get().get_current_token());
-//             let slice = get_user_buf(&table, buf, len);
-//             for s in slice {
-//                 let str = core::str::from_utf8(s).unwrap();
-//                 print!("{}", str);
-//             }
-//             RestoreBehavior::DirectReturn(len)
-//         }
-//         _ => panic!("unsupported fd type: {}", fd),
-//     }
-// }
-
-// pub(crate) fn sys_read(fd: usize, buf: *mut u8, len: usize) -> RestoreBehavior {
-//     let mut cnt = 0;
-//     match fd {
-//         STDIN => {
-//             let token = PROCESS_MANAGER.get().get_current_token();
-//             let page_table = ROTable::from_token(token);
-//             for offset in 0..len {
-//                 let mut ch;
-//                 loop {
-//                     ch = getch();
-//                     if ch == 0 {
-//                         switch_task();
-//                     } else {
-//                         break;
-//                     }
-//                 }
-//                 unsafe {
-//                     let va = VirAddr::from(buf.add(offset) as usize);
-//                     let pa = page_table.va_to_pa(va).unwrap();
-//                     (usize::from(pa) as *mut u8).write_volatile(ch);
-//                 }
-//                 cnt += 1;
-//             }
-//         }
-//         fd => {
-//             fs::sys_read(fd, buf, len);
-//         }
-//     }
-//     RestoreBehavior::DirectReturn(cnt)
-// }
-
 pub(crate) struct Stdio;
 
 impl File for Stdio {

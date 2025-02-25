@@ -1,7 +1,6 @@
 use alloc::{
     alloc::{alloc, dealloc},
-    collections::{btree_map::BTreeMap, linked_list::LinkedList},
-    string::String,
+    collections::linked_list::LinkedList,
     sync::{Arc, Weak},
     vec,
     vec::Vec,
@@ -23,7 +22,7 @@ use crate::{
         trap::{trap_return, ProcessContext, TrapContext},
     },
     config::TRAP_CONTEXT,
-    fs::{open_file, File},
+    fs::{open_file, File, ROOT_INODE},
     io::Stdio,
     mem::{
         address::{PhyPageNum, VirAddr},
@@ -47,20 +46,14 @@ pub(crate) enum RestoreBehavior {
 }
 
 lazy_static! {
-    pub(crate) static ref PROCESS_MANAGER: ArcCell<ProcessManager> = unsafe {
-        ArcCell::new({
-            let ptr = _num_program as usize as *const usize;
-            let program_num = ptr.read_volatile();
-            ProcessManager {
-                program_num,
-                current_program: None,
-                process: LinkedList::new(),
-                kernel_ctx: ProcessContext::new(),
-                name_map: BTreeMap::new(),
-                kernel_token: 0,
-            }
-        })
-    };
+    pub(crate) static ref PROCESS_MANAGER: ArcCell<ProcessManager> = ArcCell::new({
+        ProcessManager {
+            current_program: None,
+            process: LinkedList::new(),
+            kernel_ctx: ProcessContext::new(),
+            kernel_token: 0,
+        }
+    });
 }
 
 pub(crate) static PID_ALLOCATOR: Mutex<PidAllocator> = Mutex::new(PidAllocator::new());
@@ -380,36 +373,23 @@ pub(crate) enum State {
 }
 
 pub(crate) struct ProcessManager {
-    program_num: usize,
     current_program: Option<Arc<Mutex<Process>>>,
     process: LinkedList<Arc<Mutex<Process>>>,
     pub(crate) kernel_ctx: ProcessContext,
-    name_map: BTreeMap<String, usize>,
+    // name_map: BTreeMap<String, usize>,
     kernel_token: usize,
 }
 
 impl ProcessManager {
     pub fn print_info(&self) {
-        log!("Program_num: {}", self.program_num);
+        let programs = ROOT_INODE.ls();
+        log!("___programs___");
+        for program in programs {
+            log!("{program}");
+        }
     }
 
     pub(crate) fn init(&mut self) {
-        // 读取名字
-        let mut name_ptr = _program_names as usize as *const u8;
-        let mut str = String::new();
-        for i in 0..self.program_num {
-            unsafe {
-                let mut ch = name_ptr.read_volatile();
-                while ch != b'\0' {
-                    str.push(ch as char);
-                    name_ptr = name_ptr.add(1);
-                    ch = name_ptr.read_volatile();
-                }
-                name_ptr = name_ptr.add(1);
-            }
-            self.name_map.insert(str.clone(), i);
-            str.clear();
-        }
         let kernel_token = arch_relate::to_token(KERNEL_SPACE.get().page_table.address());
         self.kernel_token = kernel_token;
     }
@@ -431,28 +411,6 @@ impl ProcessManager {
                 panic!("internal error, name: {}", name);
             }
         }
-    }
-
-    // pub(crate) fn get_elf_by_name(&self, name: &str) -> Option<&'static [u8]> {
-    //     match self.name_map.get(name) {
-    //         Some(index) => unsafe { Some(self.get_program_elf_bytes(*index)) },
-    //         None => {
-    //             log!("can't find name {name}");
-    //             None
-    //         }
-    //     }
-    // }
-
-    #[allow(unused)]
-    // index范围：[0, program_num)
-    unsafe fn get_program_elf_bytes(&self, index: usize) -> &'static [u8] {
-        let ptr = _num_program as usize as *const usize;
-        let program_start_ptr = core::slice::from_raw_parts(ptr.add(1), self.program_num + 1);
-        assert!(index < self.program_num);
-        core::slice::from_raw_parts(
-            program_start_ptr[index] as *const u8,
-            program_start_ptr[index + 1] - program_start_ptr[index],
-        )
     }
 
     // 将program_manager内部的指针转移指向下一个program

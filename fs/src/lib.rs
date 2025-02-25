@@ -47,8 +47,7 @@ impl FileSystem {
         let data_total_block_num = total_block_num as usize - inode_total_block_num - 1;
         // 每个数据块占用的位数
         const SINGLE_BLOCK_OCCUPY: usize = BLOCK_SIZE * 8 + 1;
-        let data_bitmap_block_num =
-            (data_total_block_num + SINGLE_BLOCK_OCCUPY - 1) / SINGLE_BLOCK_OCCUPY;
+        let data_bitmap_block_num = data_total_block_num / SINGLE_BLOCK_OCCUPY;
         let data_area_block_num = data_total_block_num - data_bitmap_block_num;
 
         let mut guard = BLOCK_CACHE_MANAGER.lock();

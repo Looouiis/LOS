@@ -4,10 +4,7 @@ extern crate clap;
 use clap::Parser;
 use os_xtask_utils::{BinUtil, Cargo, CommandExt, Qemu};
 use std::{
-    fs,
-    path::{Path, PathBuf},
-    process,
-    sync::OnceLock,
+    fs::{self, read_dir}, io, path::{Path, PathBuf}, process, sync::OnceLock
 };
 
 mod fs_std;
@@ -44,8 +41,8 @@ struct BuildArgs {
     #[clap(short, long)]
     debug: bool,
     // 是否打包镜像文件
-    #[clap(short, long)]
-    pack: bool
+    #[clap(long)]
+    force_pack: bool
 }
 
 impl BuildArgs {
@@ -71,6 +68,37 @@ impl BuildArgs {
             .join("release")
     }
 
+    fn need_pack(&self) -> io::Result<bool> {
+        if self.force_pack {
+            return Ok(true);
+        }
+        let fs_img = project_path()
+            .join("target")
+            .join(self.get_target())
+            .join("release").join("fs.img");
+        let target_time = match fs::metadata(fs_img) {
+            Ok(data) => {
+                data.modified()?
+            },
+            Err(e) => {
+                if e.kind() == io::ErrorKind::NotFound {
+                    return Ok(true);
+                } else {
+                    return Err(e);
+                }
+            },
+        };
+        let src = project_path().join("user").join("src").join("bin");
+        for file in read_dir(&src)? {
+            let path = file?.path();
+            let src_time = fs::metadata(path)?.modified()?;
+            if src_time > target_time {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     fn build(&self, binary: bool) -> (PathBuf, PathBuf) {
         let target = self.get_target();
         let fs_img = project_path()
@@ -82,9 +110,10 @@ impl BuildArgs {
             .release()
             .target(target)
             .invoke();
-        // if self.pack {
-            self.fs_pack(&fs_img);
-        // }
+        if self.need_pack().expect("fetch time failed") {
+            println!("start packing...");
+            self.fs_pack(&fs_img).expect("pack failed");
+        }
         Cargo::build()
             .package("los")
             // .conditional(!self.debug, |cargo| {
