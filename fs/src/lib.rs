@@ -108,7 +108,7 @@ impl FileSystem {
                 Arc::new(Mutex::new(Self {
                     device,
                     inode_bitmap: BitMap::new(1, inode_bitmap_block_num),
-                    data_bitmap: BitMap::new(1 + inode_bitmap_block_num, data_bitmap_block_num),
+                    data_bitmap: BitMap::new(1 + inode_total_block_num, data_bitmap_block_num),
                     inode_area_start_block: (1 + inode_bitmap_block_num) as u32,
                     data_area_start_block: (1 + inode_total_block_num + data_bitmap_block_num)
                         as u32,
