@@ -52,7 +52,7 @@ pub(crate) unsafe fn run_program(/*process: Process*/) {
 }
 
 #[no_mangle]
-#[naked]
+#[unsafe(naked)]
 pub(crate) unsafe extern "C" fn switch(from: *const ProcessContext, to: *const ProcessContext) {
     naked_asm!(
         save!(x1 => a0[0]),

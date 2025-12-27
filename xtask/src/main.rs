@@ -4,14 +4,29 @@ extern crate clap;
 use clap::Parser;
 use os_xtask_utils::{BinUtil, Cargo, CommandExt, Qemu};
 use std::{
-    fs::{self, read_dir}, io, path::{Path, PathBuf}, process, sync::OnceLock
+    env, fs::{self, read_dir}, io, path::{Path, PathBuf}, process, sync::OnceLock
 };
 
 mod fs_std;
 
+fn target_path() -> &'static Path {
+    static PROJECT: OnceLock<PathBuf> = OnceLock::new();
+    PROJECT.get_or_init(|| {
+        let target_dir = env::var("CARGO_TARGET_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                let manifest_dir = env!("CARGO_MANIFEST_DIR");
+                PathBuf::from(manifest_dir).parent().unwrap().join("target").to_path_buf()
+            });
+        target_dir
+    }).as_path()
+}
+
 fn project_path() -> &'static Path {
-    static PROJECT: OnceLock<&'static Path> = OnceLock::new();
-    PROJECT.get_or_init(|| Path::new(std::env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+    static PROJECT: OnceLock<PathBuf> = OnceLock::new();
+    PROJECT.get_or_init(|| {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+    }).as_path()
 }
 
 #[derive(Parser)]
@@ -61,8 +76,7 @@ impl BuildArgs {
 
     fn base_path(&self) -> PathBuf {
         let target = self.get_target();
-        project_path()
-            .join("target")
+        target_path()
             .join(target)
             // .join(if self.debug { "debug" } else { "release" })
             .join("release")
@@ -72,22 +86,10 @@ impl BuildArgs {
         if self.force_pack {
             return Ok(true);
         }
-        let fs_img = project_path()
-            .join("target")
+        let fs_img = target_path()
             .join(self.get_target())
             .join("release").join("fs.img");
-        let target_time = match fs::metadata(fs_img) {
-            Ok(data) => {
-                data.modified()?
-            },
-            Err(e) => {
-                if e.kind() == io::ErrorKind::NotFound {
-                    return Ok(true);
-                } else {
-                    return Err(e);
-                }
-            },
-        };
+        let target_time = fs::metadata(fs_img)?.modified()?;
         let src = project_path().join("user").join("src").join("bin");
         for file in read_dir(&src)? {
             let path = file?.path();
@@ -101,8 +103,7 @@ impl BuildArgs {
 
     fn build(&self, binary: bool) -> (PathBuf, PathBuf) {
         let target = self.get_target();
-        let fs_img = project_path()
-            .join("target")
+        let fs_img = target_path()
             .join(target)
             .join("release").join("fs.img");
         Cargo::build()
@@ -110,10 +111,22 @@ impl BuildArgs {
             .release()
             .target(target)
             .invoke();
-        if self.need_pack().expect("fetch time failed") {
-            println!("start packing...");
-            self.fs_pack(&fs_img).expect("pack failed");
-        }
+        self.need_pack()
+            .map_or_else(
+                |e| {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        true
+                    } else {
+                        panic!("fetchtime failed: {:?}", e);
+                    }
+                },
+                |val| val,
+            )
+            .then(|| {
+                println!("start packing...");
+                println!("dir = {}", fs_img.display());
+                self.fs_pack(&fs_img).expect("pack failed");
+            });
         Cargo::build()
             .package("los")
             // .conditional(!self.debug, |cargo| {
@@ -122,8 +135,7 @@ impl BuildArgs {
             .release()
             .target(target)
             .invoke();
-        let elf = project_path()
-            .join("target")
+        let elf = target_path()
             .join(target)
             // .join(if self.debug { "debug" } else { "release" })
             .join("release")
@@ -182,8 +194,7 @@ struct AsmArgs {
 impl AsmArgs {
     fn dump(self) {
         let (elf, _) = self.build.build(false);
-        let out = project_path()
-            .join("target")
+        let out = target_path()
             .join(self.name.unwrap_or(format!(
                 "{}.asm",
                 elf.file_stem().unwrap().to_string_lossy()
